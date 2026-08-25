@@ -45,6 +45,12 @@ export class PatientsController {
     return this.patientsService.getStats(user.cabinetId);
   }
 
+  @Get('recalls')
+  @ApiOperation({ summary: 'Lister les patients à relancer (rappel de contrôle)' })
+  recalls(@CurrentUser() user: CurrentUserType, @Query('months') months?: string) {
+    return this.patientsService.getRecalls(user.cabinetId, months ? Number(months) : 6);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer la fiche complète d\'un patient' })
   findOne(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
