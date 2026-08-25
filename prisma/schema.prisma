@@ -23,6 +23,10 @@ model Cabinet {
   telephone String?  @db.VarChar(30)
   email     String?  @db.VarChar(150)
   logoUrl   String?  @map("logo_url") @db.Text
+ plan        String    @default("starter") @db.VarChar(20)
+subscriptionStatus String    @default("trial") @map("subscription_status") @db.VarChar(20)
+trialEndsAt        DateTime? @map("trial_ends_at")
+subscriptionEndsAt DateTime? @map("subscription_ends_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   users              User[]
@@ -33,8 +37,26 @@ model Cabinet {
   prescriptionTemplates PrescriptionTemplate[]
   expenses           Expense[]
   stockItems         StockItem[]
+  subscriptionPayments  SubscriptionPayment[]
 
   @@map("cabinets")
+}
+model SubscriptionPayment {
+  id           Int       @id @default(autoincrement())
+  cabinetId    Int       @map("cabinet_id")
+  montant      Decimal   @db.Decimal(10, 3)
+  plan         String    @db.VarChar(20)
+  statut       String    @default("pending") @db.VarChar(20)
+  provider     String    @default("konnect") @db.VarChar(20)
+  paymentRef   String?   @unique @map("payment_ref") @db.VarChar(100)
+  periodeDebut DateTime? @map("periode_debut")
+  periodeFin   DateTime? @map("periode_fin")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  cabinet Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  @@index([cabinetId])
+  @@map("subscription_payments")
 }
 
 model User {
