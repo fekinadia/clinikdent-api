@@ -31,9 +31,18 @@ export class AppointmentsService {
       throw new ForbiddenException('Patient invalide');
     }
 
+    // Vérifier que le médecin et le type de RDV appartiennent au cabinet
+    if (dto.medecinId) {
+      await this.assertMedecinInCabinet(cabinetId, dto.medecinId);
+    }
+    if (dto.typeId) {
+      await this.assertTypeInCabinet(cabinetId, dto.typeId);
+    }
+
     // Vérifier les conflits d'horaires pour le médecin
     if (dto.medecinId) {
       const conflict = await this.findConflict(
+        cabinetId,
         dto.medecinId,
         dateDebut,
         dateFin,
@@ -123,6 +132,24 @@ export class AppointmentsService {
 
   async update(cabinetId: number, id: number, dto: UpdateAppointmentDto) {
     await this.findOne(cabinetId, id);
+
+    // Si le RDV est ré-attaché à un autre patient/médecin/type, vérifier
+    // que ces entités appartiennent bien au même cabinet (anti cross-tenant).
+    if (dto.patientId) {
+      const patient = await this.prisma.patient.findUnique({
+        where: { id: dto.patientId },
+      });
+      if (!patient || patient.cabinetId !== cabinetId) {
+        throw new ForbiddenException('Patient invalide');
+      }
+    }
+    if (dto.medecinId) {
+      await this.assertMedecinInCabinet(cabinetId, dto.medecinId);
+    }
+    if (dto.typeId) {
+      await this.assertTypeInCabinet(cabinetId, dto.typeId);
+    }
+
     return this.prisma.appointment.update({
       where: { id },
       data: {
@@ -140,9 +167,33 @@ export class AppointmentsService {
     return { success: true };
   }
 
-  private async findConflict(medecinId: number, debut: Date, fin: Date) {
+  private async assertMedecinInCabinet(cabinetId: number, medecinId: number) {
+    const medecin = await this.prisma.user.findUnique({
+      where: { id: medecinId },
+    });
+    if (!medecin || medecin.cabinetId !== cabinetId) {
+      throw new ForbiddenException('Médecin invalide');
+    }
+  }
+
+  private async assertTypeInCabinet(cabinetId: number, typeId: number) {
+    const type = await this.prisma.appointmentType.findUnique({
+      where: { id: typeId },
+    });
+    if (!type || type.cabinetId !== cabinetId) {
+      throw new ForbiddenException('Type de rendez-vous invalide');
+    }
+  }
+
+  private async findConflict(
+    cabinetId: number,
+    medecinId: number,
+    debut: Date,
+    fin: Date,
+  ) {
     return this.prisma.appointment.findFirst({
       where: {
+        cabinetId,
         medecinId,
         statut: { not: 'annule' },
         OR: [
