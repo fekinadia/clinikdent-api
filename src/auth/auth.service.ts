@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { TRIAL_DAYS } from '../billing/plan-limits';
 
 @Injectable()
 export class AuthService {
@@ -27,9 +28,12 @@ export class AuthService {
     // Créer le cabinet ET l'utilisateur en une transaction
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+
     const result = await this.prisma.$transaction(async (tx) => {
       const cabinet = await tx.cabinet.create({
-        data: { nom: dto.nomCabinet },
+        data: { nom: dto.nomCabinet, trialEndsAt },
       });
 
       const user = await tx.user.create({
