@@ -119,4 +119,65 @@ export class PatientsService {
 
     return { total, ceMois };
   }
+
+  /**
+   * Liste des patients "à relancer" : leur dernier soin remonte à plus de
+   * `months` mois et ils n'ont aucun rendez-vous à venir programmé.
+   * Sert de base au module Rappels (recall) du cabinet.
+   */
+  async getRecalls(cabinetId: number, months = 6) {
+    const monthsNum = Number(months) > 0 ? Number(months) : 6;
+    const threshold = new Date();
+    threshold.setMonth(threshold.getMonth() - monthsNum);
+
+    const patients = await this.prisma.patient.findMany({
+      where: { cabinetId },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        gsm: true,
+        telephoneFixe: true,
+        treatments: {
+          orderBy: { dateSoin: 'desc' },
+          take: 1,
+          select: { dateSoin: true },
+        },
+        appointments: {
+          where: {
+            dateDebut: { gte: new Date() },
+            statut: { not: 'annule' },
+          },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+
+    return patients
+      .filter((p) => {
+        if (p.appointments.length > 0) return false; // déjà un RDV à venir
+        const derniere = p.treatments[0]?.dateSoin;
+        if (!derniere) return false; // aucun historique de soin
+        return derniere <= threshold;
+      })
+      .map((p) => {
+        const derniereVisite = p.treatments[0].dateSoin;
+        const moisEcoules = Math.floor(
+          (Date.now() - new Date(derniereVisite).getTime()) / (1000 * 60 * 60 * 24 * 30),
+        );
+        return {
+          id: p.id,
+          nom: p.nom,
+          prenom: p.prenom,
+          gsm: p.gsm,
+          telephoneFixe: p.telephoneFixe,
+          derniereVisite,
+          moisEcoules,
+        };
+      })
+      .sort(
+        (a, b) => new Date(a.derniereVisite).getTime() - new Date(b.derniereVisite).getTime(),
+      );
+  }
 }
