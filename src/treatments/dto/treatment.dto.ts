@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   ValidateNested,
 } from 'class-validator';
@@ -87,7 +88,7 @@ export class UpdateToothStateDto {
 
   @ApiProperty({
     enum: ['saine', 'carie', 'obturation', 'couronne', 'bridge', 'implant',
-           'extraction', 'absente', 'endo', 'a_traiter'],
+      'extraction', 'absente', 'endo', 'a_traiter'],
   })
   @IsIn([
     'saine', 'carie', 'obturation', 'couronne', 'bridge', 'implant',
@@ -99,4 +100,21 @@ export class UpdateToothStateDto {
   @IsOptional()
   @IsString()
   notes?: string;
+}
+
+export class RecordPaymentDto {
+  @ApiProperty({ example: 40, description: 'Montant encaissé (DT)' })
+  @IsNumber()
+  @IsPositive()
+  montant: number;
+
+  @ApiPropertyOptional({ enum: ['especes', 'cheque', 'd17', 'virement', 'cnam'] })
+  @IsOptional()
+  @IsIn(['especes', 'cheque', 'd17', 'virement', 'cnam'])
+  modeReglement?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  remarque?: string;
 }
