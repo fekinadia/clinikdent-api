@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTreatmentDto, UpdateToothStateDto } from './dto/treatment.dto';
+import { CreateTreatmentDto, RecordPaymentDto, UpdateToothStateDto } from './dto/treatment.dto';
 
 @Injectable()
 export class TreatmentsService {
@@ -80,6 +80,53 @@ export class TreatmentsService {
     const reste = total - recu - remise;
 
     return { total, recu, remise, reste };
+  }
+
+  async recordPayment(
+    cabinetId: number,
+    userId: number,
+    actId: number,
+    dto: RecordPaymentDto,
+  ) {
+    const act = await this.prisma.treatmentAct.findUnique({
+      where: { id: actId },
+      include: { treatment: { include: { patient: true } } },
+    });
+    if (!act || act.treatment.patient.cabinetId !== cabinetId) {
+      throw new ForbiddenException('Acte invalide');
+    }
+
+    const cout = Number(act.cout);
+    const remise = Number(act.remise);
+    const dejaRecu = Number(act.montantRecu);
+    const reste = cout - remise - dejaRecu;
+
+    if (dto.montant > reste + 0.01) {
+      throw new BadRequestException(
+        `Le montant dépasse le solde dû (${reste.toFixed(2)} DT)`,
+      );
+    }
+
+    const modeReglement = dto.modeReglement || act.modeReglement || 'especes';
+
+    const [updatedAct] = await this.prisma.$transaction([
+      this.prisma.treatmentAct.update({
+        where: { id: actId },
+        data: { montantRecu: { increment: dto.montant }, modeReglement },
+      }),
+      this.prisma.payment.create({
+        data: {
+          patientId: act.treatment.patientId,
+          treatmentActId: actId,
+          montant: dto.montant,
+          modeReglement,
+          remarque: dto.remarque,
+          createdById: userId,
+        },
+      }),
+    ]);
+
+    return updatedAct;
   }
 
   // ==== SCHÉMA DENTAIRE ====
