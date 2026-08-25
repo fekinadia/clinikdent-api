@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
+import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
 
 @Injectable()
 export class PatientsService {
   constructor(private prisma: PrismaService) {}
 
   async create(cabinetId: number, userId: number, dto: CreatePatientDto) {
+    await this.assertSousLaLimite(cabinetId);
     // Générer le numéro de dossier (incrémental par cabinet)
     const last = await this.prisma.patient.findFirst({
       where: { cabinetId },
@@ -180,4 +182,24 @@ export class PatientsService {
         (a, b) => new Date(a.derniereVisite).getTime() - new Date(b.derniereVisite).getTime(),
       );
   }
+
+    // Bloque la création d'un nouveau patient si le cabinet a déjà atteint
+    // la limite de son plan d'abonnement (voir src/billing/plan-limits.ts).
+    private async assertSousLaLimite(cabinetId: number) {
+          const cabinet = await this.prisma.cabinet.findUnique({
+                  where: { id: cabinetId },
+          });
+          if (!cabinet) return;
+
+          const planKey = isValidPlan(cabinet.plan) ? cabinet.plan : 'starter';
+          const maxPatients = PLAN_LIMITS[planKey].maxPatients;
+          if (maxPatients === null) return; // illimité
+
+          const total = await this.prisma.patient.count({ where: { cabinetId } });
+          if (total >= maxPatients) {
+                  throw new ForbiddenException(
+                            `Limite de ${maxPatients} patients atteinte pour le plan ${PLAN_LIMITS[planKey].label}. Passez à un plan supérieur pour continuer.`,
+                          );
+          }
+    }
 }
