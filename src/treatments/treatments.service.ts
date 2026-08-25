@@ -15,6 +15,34 @@ export class TreatmentsService {
       throw new ForbiddenException('Patient invalide');
     }
 
+    // Si le soin est rattaché à un rendez-vous, vérifier qu'il appartient
+    // bien au même patient (donc au même cabinet).
+    if (dto.appointmentId) {
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: dto.appointmentId },
+      });
+      if (!appointment || appointment.patientId !== dto.patientId) {
+        throw new ForbiddenException('Rendez-vous invalide');
+      }
+    }
+
+    // Vérifier que les actes référencés au catalogue appartiennent au cabinet
+    const acteIds = dto.acts
+      .map((a) => a.acteId)
+      .filter((id): id is number => !!id);
+    if (acteIds.length > 0) {
+      const actes = await this.prisma.actCatalog.findMany({
+        where: { id: { in: acteIds } },
+      });
+      const uniqueIds = new Set(acteIds);
+      const invalide =
+        actes.length !== uniqueIds.size ||
+        actes.some((a) => a.cabinetId !== cabinetId);
+      if (invalide) {
+        throw new ForbiddenException('Acte du catalogue invalide');
+      }
+    }
+
     return this.prisma.treatment.create({
       data: {
         patientId: dto.patientId,
