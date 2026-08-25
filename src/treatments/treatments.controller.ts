@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   UseGuards,
@@ -12,7 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { TreatmentsService } from './treatments.service';
-import { CreateTreatmentDto, UpdateToothStateDto } from './dto/treatment.dto';
+import { CreateTreatmentDto, RecordPaymentDto, UpdateToothStateDto } from './dto/treatment.dto';
 
 @ApiTags('Soins & Schéma dentaire')
 @ApiBearerAuth()
@@ -67,5 +68,15 @@ export class TreatmentsController {
       patientId,
       dto,
     );
+  }
+
+  @Patch('treatments/acts/:actId/payment')
+  @ApiOperation({ summary: 'Enregistrer un paiement sur un acte' })
+  recordPayment(
+    @CurrentUser() user: CurrentUserType,
+    @Param('actId', ParseIntPipe) actId: number,
+    @Body() dto: RecordPaymentDto,
+  ) {
+    return this.treatmentsService.recordPayment(user.cabinetId, user.userId, actId, dto);
   }
 }
