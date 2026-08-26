@@ -7,6 +7,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { TreatmentsModule } from './treatments/treatments.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
 import { BillingModule } from './billing/billing.module';
+import { PatientImagesModule } from './patient-images/patient-images.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BillingModule } from './billing/billing.module';
     TreatmentsModule,
     PrescriptionsModule,
     BillingModule,
+    PatientImagesModule,
   ],
 })
 export class AppModule {}
