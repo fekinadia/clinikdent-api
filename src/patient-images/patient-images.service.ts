@@ -73,7 +73,7 @@ export class PatientImagesService {
         apikey: serviceKey,
         'Content-Type': file.mimetype,
       },
-      body: file.buffer,
+      body: file.buffer as unknown as BodyInit,
     });
 
     if (!res.ok) {
