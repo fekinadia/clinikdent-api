@@ -17,41 +17,42 @@ datasource db {
 // ============================================================
 
 model Cabinet {
-  id        Int      @id @default(autoincrement())
-  nom       String   @db.VarChar(200)
-  adresse   String?  @db.Text
-  telephone String?  @db.VarChar(30)
-  email     String?  @db.VarChar(150)
-  logoUrl   String?  @map("logo_url") @db.Text
- plan        String    @default("starter") @db.VarChar(20)
-subscriptionStatus String    @default("trial") @map("subscription_status") @db.VarChar(20)
-trialEndsAt        DateTime? @map("trial_ends_at")
-subscriptionEndsAt DateTime? @map("subscription_ends_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                  Int      @id @default(autoincrement())
+  nom                 String   @db.VarChar(200)
+  adresse             String?  @db.Text
+  telephone           String?  @db.VarChar(30)
+  email               String?  @db.VarChar(150)
+  logoUrl             String?  @map("logo_url") @db.Text
+  plan                String   @default("starter") @db.VarChar(20)
+  subscriptionStatus  String   @default("trial") @map("subscription_status") @db.VarChar(20)
+  trialEndsAt         DateTime? @map("trial_ends_at")
+  subscriptionEndsAt  DateTime? @map("subscription_ends_at")
+  createdAt           DateTime @default(now()) @map("created_at")
 
-  users              User[]
-  patients           Patient[]
-  appointmentTypes   AppointmentType[]
-  appointments       Appointment[]
-  actsCatalog        ActCatalog[]
+  users                 User[]
+  patients              Patient[]
+  appointmentTypes      AppointmentType[]
+  appointments          Appointment[]
+  actsCatalog           ActCatalog[]
   prescriptionTemplates PrescriptionTemplate[]
-  expenses           Expense[]
-  stockItems         StockItem[]
+  expenses              Expense[]
+  stockItems            StockItem[]
   subscriptionPayments  SubscriptionPayment[]
+  reminders             Reminder[]
 
   @@map("cabinets")
 }
 model SubscriptionPayment {
-  id           Int       @id @default(autoincrement())
-  cabinetId    Int       @map("cabinet_id")
-  montant      Decimal   @db.Decimal(10, 3)
-  plan         String    @db.VarChar(20)
-  statut       String    @default("pending") @db.VarChar(20)
-  provider     String    @default("konnect") @db.VarChar(20)
-  paymentRef   String?   @unique @map("payment_ref") @db.VarChar(100)
-  periodeDebut DateTime? @map("periode_debut")
-  periodeFin   DateTime? @map("periode_fin")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id            Int      @id @default(autoincrement())
+  cabinetId     Int      @map("cabinet_id")
+  montant       Decimal  @db.Decimal(10, 3)
+  plan          String   @db.VarChar(20)
+  statut        String   @default("pending") @db.VarChar(20)
+  provider      String   @default("konnect") @db.VarChar(20)
+  paymentRef    String?  @unique @map("payment_ref") @db.VarChar(100)
+  periodeDebut  DateTime? @map("periode_debut")
+  periodeFin    DateTime? @map("periode_fin")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   cabinet Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
 
@@ -60,33 +61,34 @@ model SubscriptionPayment {
 }
 
 model User {
-  id            Int      @id @default(autoincrement())
-  cabinetId     Int      @map("cabinet_id")
-  email         String   @unique @db.VarChar(150)
-  passwordHash  String   @map("password_hash") @db.VarChar(255)
-  nom           String   @db.VarChar(100)
-  prenom        String   @db.VarChar(100)
-  specialite    String?  @db.VarChar(100)
-  numeroOrdre   String?  @map("numero_ordre") @db.VarChar(50)
-  telephone     String?  @db.VarChar(30)
-  role          String   @default("medecin") @db.VarChar(20)
-  actif         Boolean  @default(true)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id             Int      @id @default(autoincrement())
+  cabinetId      Int      @map("cabinet_id")
+  email          String   @unique @db.VarChar(150)
+  passwordHash   String   @map("password_hash") @db.VarChar(255)
+  nom            String   @db.VarChar(100)
+  prenom         String   @db.VarChar(100)
+  specialite     String?  @db.VarChar(100)
+  numeroOrdre    String?  @map("numero_ordre") @db.VarChar(50)
+  telephone      String?  @db.VarChar(30)
+  role           String   @default("medecin") @db.VarChar(20)
+  actif          Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  cabinet              Cabinet              @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  patientsCreated      Patient[]            @relation("PatientCreator")
-  appointments         Appointment[]
-  appointmentsCreated  Appointment[]        @relation("AppointmentCreator")
-  treatments           Treatment[]
-  toothStatesModified  ToothState[]
-  prescriptions        Prescription[]
+  cabinet               Cabinet        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  patientsCreated       Patient[]      @relation("PatientCreator")
+  appointments          Appointment[]
+  appointmentsCreated   Appointment[]  @relation("AppointmentCreator")
+  treatments            Treatment[]
+  toothStatesModified   ToothState[]
+  prescriptions         Prescription[]
   prescriptionTemplates PrescriptionTemplate[]
-  imagesUploaded       PatientImage[]
-  payments             Payment[]
-  expensesCreated      Expense[]
-  stockMovements       StockMovement[]
-  auditLog             AuditLog[]
+  imagesUploaded        PatientImage[]
+  payments              Payment[]
+  expensesCreated       Expense[]
+  stockMovements        StockMovement[]
+  auditLog              AuditLog[]
+  remindersCreated      Reminder[]
 
   @@index([cabinetId])
   @@index([email])
@@ -98,45 +100,46 @@ model User {
 // ============================================================
 
 model Patient {
-  id                 Int       @id @default(autoincrement())
-  cabinetId          Int       @map("cabinet_id")
-  numeroDossier      String    @unique @map("numero_dossier") @db.VarChar(20)
-  ancienNumero       String?   @map("ancien_numero") @db.VarChar(20)
-  nom                String    @db.VarChar(100)
-  prenom             String    @db.VarChar(100)
-  dateNaissance      DateTime? @map("date_naissance") @db.Date
-  sexe               String?   @db.Char(1)
-  situationFamiliale String?   @map("situation_familiale") @db.VarChar(20)
-  gsm                String?   @db.VarChar(30)
-  telephoneFixe      String?   @map("telephone_fixe") @db.VarChar(30)
-  email              String?   @db.VarChar(150)
-  adresse            String?   @db.Text
-  codePostal         String?   @map("code_postal") @db.VarChar(10)
-  ville              String?   @db.VarChar(100)
-  profession         String?   @db.VarChar(150)
-  nomJeuneFille      String?   @map("nom_jeune_fille") @db.VarChar(100)
-  teinteDentaire     String?   @map("teinte_dentaire") @db.VarChar(20)
-  adressePar         String?   @map("adresse_par") @db.VarChar(150)
-  convention         String?   @db.VarChar(50)
-  matConvention      String?   @map("mat_convention") @db.VarChar(50)
-  assurance          String?   @db.VarChar(100)
-  matCnam            String?   @map("mat_cnam") @db.VarChar(50)
-  medecinTraitant    String?   @map("medecin_traitant") @db.VarChar(150)
-  antecedents        String?   @db.Text
-  autresInfos        String?   @map("autres_infos") @db.Text
-  photoUrl           String?   @map("photo_url") @db.Text
-  createdById        Int?      @map("created_by")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  id                  Int       @id @default(autoincrement())
+  cabinetId           Int       @map("cabinet_id")
+  numeroDossier       String    @unique @map("numero_dossier") @db.VarChar(20)
+  ancienNumero        String?   @map("ancien_numero") @db.VarChar(20)
+  nom                 String    @db.VarChar(100)
+  prenom              String    @db.VarChar(100)
+  dateNaissance       DateTime? @map("date_naissance") @db.Date
+  sexe                String?   @db.Char(1)
+  situationFamiliale  String?   @map("situation_familiale") @db.VarChar(20)
+  gsm                 String?   @db.VarChar(30)
+  telephoneFixe       String?   @map("telephone_fixe") @db.VarChar(30)
+  email               String?   @db.VarChar(150)
+  adresse             String?   @db.Text
+  codePostal          String?   @map("code_postal") @db.VarChar(10)
+  ville               String?   @db.VarChar(100)
+  profession          String?   @db.VarChar(150)
+  nomJeuneFille       String?   @map("nom_jeune_fille") @db.VarChar(100)
+  teinteDentaire      String?   @map("teinte_dentaire") @db.VarChar(20)
+  adressePar          String?   @map("adresse_par") @db.VarChar(150)
+  convention          String?   @db.VarChar(50)
+  matConvention       String?   @map("mat_convention") @db.VarChar(50)
+  assurance           String?   @db.VarChar(100)
+  matCnam             String?   @map("mat_cnam") @db.VarChar(50)
+  medecinTraitant     String?   @map("medecin_traitant") @db.VarChar(150)
+  antecedents         String?   @db.Text
+  autresInfos         String?   @map("autres_infos") @db.Text
+  photoUrl            String?   @map("photo_url") @db.Text
+  createdById         Int?      @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  cabinet       Cabinet        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  createdBy     User?          @relation("PatientCreator", fields: [createdById], references: [id])
+  cabinet       Cabinet         @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdBy     User?           @relation("PatientCreator", fields: [createdById], references: [id])
   appointments  Appointment[]
   treatments    Treatment[]
   toothStates   ToothState[]
   prescriptions Prescription[]
   images        PatientImage[]
   payments      Payment[]
+  reminders     Reminder[]
 
   @@index([cabinetId])
   @@index([numeroDossier])
@@ -150,12 +153,12 @@ model Patient {
 // ============================================================
 
 model AppointmentType {
-  id           Int      @id @default(autoincrement())
-  cabinetId    Int      @map("cabinet_id")
-  libelle      String   @db.VarChar(100)
-  dureeMinutes Int      @default(30) @map("duree_minutes")
-  couleur      String   @default("#3b82f6") @db.VarChar(7)
-  actif        Boolean  @default(true)
+  id            Int      @id @default(autoincrement())
+  cabinetId     Int      @map("cabinet_id")
+  libelle       String   @db.VarChar(100)
+  dureeMinutes  Int      @default(30) @map("duree_minutes")
+  couleur       String   @default("#3b82f6") @db.VarChar(7)
+  actif         Boolean  @default(true)
 
   cabinet      Cabinet       @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   appointments Appointment[]
@@ -164,26 +167,26 @@ model AppointmentType {
 }
 
 model Appointment {
-  id            Int       @id @default(autoincrement())
-  cabinetId     Int       @map("cabinet_id")
-  patientId     Int       @map("patient_id")
-  medecinId     Int?      @map("medecin_id")
-  typeId        Int?      @map("type_id")
-  dateDebut     DateTime  @map("date_debut")
-  dateFin       DateTime  @map("date_fin")
-  statut        String    @default("planifie") @db.VarChar(20)
-  observation   String?   @db.Text
-  rappelEnvoye  Boolean   @default(false) @map("rappel_envoye")
-  createdById   Int?      @map("created_by")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             Int      @id @default(autoincrement())
+  cabinetId      Int      @map("cabinet_id")
+  patientId      Int      @map("patient_id")
+  medecinId      Int?     @map("medecin_id")
+  typeId         Int?     @map("type_id")
+  dateDebut      DateTime @map("date_debut")
+  dateFin        DateTime @map("date_fin")
+  statut         String   @default("planifie") @db.VarChar(20)
+  observation    String?  @db.Text
+  rappelEnvoye   Boolean  @default(false) @map("rappel_envoye")
+  createdById    Int?     @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  cabinet    Cabinet          @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  patient    Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  medecin    User?            @relation(fields: [medecinId], references: [id])
-  type       AppointmentType? @relation(fields: [typeId], references: [id])
-  createdBy  User?            @relation("AppointmentCreator", fields: [createdById], references: [id])
-  treatments Treatment[]
+  cabinet     Cabinet          @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  patient     Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medecin     User?            @relation(fields: [medecinId], references: [id])
+  type        AppointmentType? @relation(fields: [typeId], references: [id])
+  createdBy   User?            @relation("AppointmentCreator", fields: [createdById], references: [id])
+  treatments  Treatment[]
 
   @@index([patientId])
   @@index([medecinId])
@@ -197,14 +200,14 @@ model Appointment {
 // ============================================================
 
 model ActCatalog {
-  id          Int     @id @default(autoincrement())
-  cabinetId   Int     @map("cabinet_id")
-  code        String  @db.VarChar(20)
-  libelle     String  @db.VarChar(200)
-  coefficient Decimal @default(1) @db.Decimal(6, 2)
-  tarifBase   Decimal @map("tarif_base") @db.Decimal(10, 3)
-  categorie   String? @db.VarChar(50)
-  actif       Boolean @default(true)
+  id           Int      @id @default(autoincrement())
+  cabinetId    Int      @map("cabinet_id")
+  code         String   @db.VarChar(20)
+  libelle      String   @db.VarChar(200)
+  coefficient  Decimal  @default(1) @db.Decimal(6, 2)
+  tarifBase    Decimal  @map("tarif_base") @db.Decimal(10, 3)
+  categorie    String?  @db.VarChar(50)
+  actif        Boolean  @default(true)
 
   cabinet       Cabinet        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   treatmentActs TreatmentAct[]
@@ -213,18 +216,18 @@ model ActCatalog {
 }
 
 model Treatment {
-  id            Int      @id @default(autoincrement())
-  patientId     Int      @map("patient_id")
-  medecinId     Int?     @map("medecin_id")
-  appointmentId Int?     @map("appointment_id")
-  dateSoin      DateTime @map("date_soin") @db.Date
-  observations  String?  @db.Text
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  patientId      Int      @map("patient_id")
+  medecinId      Int?     @map("medecin_id")
+  appointmentId  Int?     @map("appointment_id")
+  dateSoin       DateTime @map("date_soin") @db.Date
+  observations   String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  patient     Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  medecin     User?          @relation(fields: [medecinId], references: [id])
-  appointment Appointment?   @relation(fields: [appointmentId], references: [id])
-  acts        TreatmentAct[]
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medecin      User?        @relation(fields: [medecinId], references: [id])
+  appointment  Appointment? @relation(fields: [appointmentId], references: [id])
+  acts         TreatmentAct[]
 
   @@index([patientId])
   @@index([dateSoin])
@@ -232,23 +235,23 @@ model Treatment {
 }
 
 model TreatmentAct {
-  id            Int      @id @default(autoincrement())
-  treatmentId   Int      @map("treatment_id")
-  acteId        Int?     @map("acte_id")
-  libelle       String   @db.VarChar(200)
-  dents         String?  @db.VarChar(100)
-  coefficient   Decimal? @db.Decimal(6, 2)
-  cout          Decimal  @db.Decimal(10, 3)
-  montantRecu   Decimal  @default(0) @map("montant_recu") @db.Decimal(10, 3)
-  remise        Decimal  @default(0) @db.Decimal(10, 3)
-  modeReglement String?  @map("mode_reglement") @db.VarChar(20)
-  typeSoin      String   @default("realise") @map("type_soin") @db.VarChar(30)
-  rectif        Boolean  @default(false)
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  treatmentId    Int      @map("treatment_id")
+  acteId         Int?     @map("acte_id")
+  libelle        String   @db.VarChar(200)
+  dents          String?  @db.VarChar(100)
+  coefficient    Decimal? @db.Decimal(6, 2)
+  cout           Decimal  @db.Decimal(10, 3)
+  montantRecu    Decimal  @default(0) @map("montant_recu") @db.Decimal(10, 3)
+  remise         Decimal  @default(0) @db.Decimal(10, 3)
+  modeReglement  String?  @map("mode_reglement") @db.VarChar(20)
+  typeSoin       String   @default("realise") @map("type_soin") @db.VarChar(30)
+  rectif         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  treatment Treatment   @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  acte      ActCatalog? @relation(fields: [acteId], references: [id])
-  payments  Payment[]
+  treatment  Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  acte       ActCatalog?  @relation(fields: [acteId], references: [id])
+  payments   Payment[]
 
   @@index([treatmentId])
   @@map("treatment_acts")
@@ -259,17 +262,17 @@ model TreatmentAct {
 // ============================================================
 
 model ToothState {
-  id           Int      @id @default(autoincrement())
-  patientId    Int      @map("patient_id")
-  dentNumero   Int      @map("dent_numero")
-  etat         String   @db.VarChar(30)
-  couleur      String?  @db.VarChar(7)
-  notes        String?  @db.Text
-  dateModif    DateTime @default(now()) @map("date_modif")
-  modifiedById Int?     @map("modified_by")
+  id            Int      @id @default(autoincrement())
+  patientId     Int      @map("patient_id")
+  dentNumero    Int      @map("dent_numero")
+  etat          String   @db.VarChar(30)
+  couleur       String?  @db.VarChar(7)
+  notes         String?  @db.Text
+  dateModif     DateTime @default(now()) @map("date_modif")
+  modifiedById  Int?     @map("modified_by")
 
-  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  modifiedBy User?   @relation(fields: [modifiedById], references: [id])
+  patient      Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  modifiedBy   User?   @relation(fields: [modifiedById], references: [id])
 
   @@unique([patientId, dentNumero])
   @@index([patientId])
@@ -281,8 +284,8 @@ model ToothState {
 // ============================================================
 
 model MedicationFamily {
-  id      Int    @id @default(autoincrement())
-  libelle String @db.VarChar(100)
+  id       Int    @id @default(autoincrement())
+  libelle  String @db.VarChar(100)
 
   medications Medication[]
 
@@ -290,45 +293,45 @@ model MedicationFamily {
 }
 
 model Medication {
-  id              Int     @id @default(autoincrement())
-  familleId       Int?    @map("famille_id")
-  nom             String  @db.VarChar(200)
-  dosage          String? @db.VarChar(50)
-  forme           String? @db.VarChar(50)
-  posologieDefaut String? @map("posologie_defaut") @db.VarChar(200)
-  actif           Boolean @default(true)
+  id               Int      @id @default(autoincrement())
+  familleId        Int?     @map("famille_id")
+  nom              String   @db.VarChar(200)
+  dosage           String?  @db.VarChar(50)
+  forme            String?  @db.VarChar(50)
+  posologieDefaut  String?  @map("posologie_defaut") @db.VarChar(200)
+  actif            Boolean  @default(true)
 
-  famille          MedicationFamily?            @relation(fields: [familleId], references: [id])
-  templateItems    PrescriptionTemplateItem[]
-  prescriptionItems PrescriptionItem[]
+  famille            MedicationFamily?           @relation(fields: [familleId], references: [id])
+  templateItems      PrescriptionTemplateItem[]
+  prescriptionItems  PrescriptionItem[]
 
   @@map("medications")
 }
 
 model PrescriptionTemplate {
-  id          Int      @id @default(autoincrement())
-  cabinetId   Int      @map("cabinet_id")
-  libelle     String   @db.VarChar(100)
-  description String?  @db.Text
-  createdById Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            Int      @id @default(autoincrement())
+  cabinetId     Int      @map("cabinet_id")
+  libelle       String   @db.VarChar(100)
+  description   String?  @db.Text
+  createdById   Int?     @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  cabinet   Cabinet                    @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  createdBy User?                      @relation(fields: [createdById], references: [id])
-  items     PrescriptionTemplateItem[]
+  cabinet    Cabinet                     @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdBy  User?                       @relation(fields: [createdById], references: [id])
+  items      PrescriptionTemplateItem[]
 
   @@map("prescription_templates")
 }
 
 model PrescriptionTemplateItem {
-  id           Int     @id @default(autoincrement())
-  templateId   Int     @map("template_id")
-  medicationId Int?    @map("medication_id")
-  posologie    String? @db.VarChar(200)
-  ordre        Int     @default(0)
+  id            Int    @id @default(autoincrement())
+  templateId    Int    @map("template_id")
+  medicationId  Int?   @map("medication_id")
+  posologie     String? @db.VarChar(200)
+  ordre         Int    @default(0)
 
-  template   PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  medication Medication?          @relation(fields: [medicationId], references: [id])
+  template    PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medication  Medication?          @relation(fields: [medicationId], references: [id])
 
   @@map("prescription_template_items")
 }
@@ -342,9 +345,9 @@ model Prescription {
   imprimee      Boolean  @default(false)
   createdAt     DateTime @default(now()) @map("created_at")
 
-  patient Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  medecin User?              @relation(fields: [medecinId], references: [id])
-  items   PrescriptionItem[]
+  patient  Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medecin  User?               @relation(fields: [medecinId], references: [id])
+  items    PrescriptionItem[]
 
   @@index([patientId])
   @@index([dateEmission])
@@ -352,15 +355,15 @@ model Prescription {
 }
 
 model PrescriptionItem {
-  id             Int     @id @default(autoincrement())
-  prescriptionId Int     @map("prescription_id")
-  medicationId   Int?    @map("medication_id")
-  nomMedicament  String  @map("nom_medicament") @db.VarChar(200)
-  posologie      String? @db.VarChar(200)
-  ordre          Int     @default(0)
+  id              Int    @id @default(autoincrement())
+  prescriptionId  Int    @map("prescription_id")
+  medicationId    Int?   @map("medication_id")
+  nomMedicament   String @map("nom_medicament") @db.VarChar(200)
+  posologie       String? @db.VarChar(200)
+  ordre           Int    @default(0)
 
-  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
-  medication   Medication?  @relation(fields: [medicationId], references: [id])
+  prescription  Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medication    Medication?  @relation(fields: [medicationId], references: [id])
 
   @@map("prescription_items")
 }
@@ -370,20 +373,20 @@ model PrescriptionItem {
 // ============================================================
 
 model PatientImage {
-  id            Int      @id @default(autoincrement())
-  patientId     Int      @map("patient_id")
-  type          String   @db.VarChar(30)
-  titre         String?  @db.VarChar(200)
-  cheminFichier String   @map("chemin_fichier") @db.Text
-  tailleOctets  BigInt?  @map("taille_octets")
-  mimeType      String?  @map("mime_type") @db.VarChar(50)
-  datePrise     DateTime? @map("date_prise") @db.Date
-  observation   String?  @db.Text
-  uploadedById  Int?     @map("uploaded_by")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             Int       @id @default(autoincrement())
+  patientId      Int       @map("patient_id")
+  type           String    @db.VarChar(30)
+  titre          String?   @db.VarChar(200)
+  cheminFichier  String    @map("chemin_fichier") @db.Text
+  tailleOctets   BigInt?   @map("taille_octets")
+  mimeType       String?   @map("mime_type") @db.VarChar(50)
+  datePrise      DateTime? @map("date_prise") @db.Date
+  observation    String?   @db.Text
+  uploadedById   Int?      @map("uploaded_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  uploadedBy User?   @relation(fields: [uploadedById], references: [id])
+  patient     Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedBy  User?   @relation(fields: [uploadedById], references: [id])
 
   @@index([patientId])
   @@index([type])
@@ -391,25 +394,49 @@ model PatientImage {
 }
 
 // ============================================================
+// RAPPELS MANUELS
+// ============================================================
+
+model Reminder {
+  id           Int      @id @default(autoincrement())
+  cabinetId    Int      @map("cabinet_id")
+  patientId    Int      @map("patient_id")
+  dateRappel   DateTime @map("date_rappel") @db.Date
+  note         String?  @db.Text
+  termine      Boolean  @default(false)
+  createdById  Int?     @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  cabinet    Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy  User?   @relation(fields: [createdById], references: [id])
+
+  @@index([cabinetId])
+  @@index([patientId])
+  @@index([dateRappel])
+  @@map("reminders")
+}
+
+// ============================================================
 // FINANCES
 // ============================================================
 
 model Payment {
-  id               Int      @id @default(autoincrement())
-  patientId        Int      @map("patient_id")
-  treatmentActId   Int?     @map("treatment_act_id")
-  montant          Decimal  @db.Decimal(10, 3)
-  modeReglement    String   @map("mode_reglement") @db.VarChar(20)
-  numeroCheque     String?  @map("numero_cheque") @db.VarChar(50)
-  datePaiement     DateTime @default(now()) @map("date_paiement") @db.Date
-  dateEncaissement DateTime? @map("date_encaissement") @db.Date
-  remarque         String?  @db.Text
-  createdById      Int?     @map("created_by")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                Int      @id @default(autoincrement())
+  patientId         Int      @map("patient_id")
+  treatmentActId    Int?     @map("treatment_act_id")
+  montant           Decimal  @db.Decimal(10, 3)
+  modeReglement     String   @map("mode_reglement") @db.VarChar(20)
+  numeroCheque      String?  @map("numero_cheque") @db.VarChar(50)
+  datePaiement      DateTime @default(now()) @map("date_paiement") @db.Date
+  dateEncaissement  DateTime? @map("date_encaissement") @db.Date
+  remarque          String?  @db.Text
+  createdById       Int?     @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  treatmentAct TreatmentAct? @relation(fields: [treatmentActId], references: [id])
-  createdBy    User?         @relation(fields: [createdById], references: [id])
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatmentAct  TreatmentAct?  @relation(fields: [treatmentActId], references: [id])
+  createdBy     User?          @relation(fields: [createdById], references: [id])
 
   @@index([patientId])
   @@index([datePaiement])
@@ -428,8 +455,8 @@ model Expense {
   createdById   Int?     @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation(fields: [createdById], references: [id])
+  cabinet    Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdBy  User?   @relation(fields: [createdById], references: [id])
 
   @@map("expenses")
 }
@@ -439,37 +466,37 @@ model Expense {
 // ============================================================
 
 model StockItem {
-  id               Int       @id @default(autoincrement())
-  cabinetId        Int       @map("cabinet_id")
-  reference        String?   @db.VarChar(50)
-  nom              String    @db.VarChar(200)
-  categorie        String?   @db.VarChar(100)
-  unite            String?   @db.VarChar(20)
-  quantiteActuelle Decimal   @default(0) @map("quantite_actuelle") @db.Decimal(10, 2)
-  quantiteMinimum  Decimal   @default(0) @map("quantite_minimum") @db.Decimal(10, 2)
-  prixUnitaire     Decimal?  @map("prix_unitaire") @db.Decimal(10, 3)
-  fournisseur      String?   @db.VarChar(200)
-  datePeremption   DateTime? @map("date_peremption") @db.Date
-  actif            Boolean   @default(true)
-  createdAt        DateTime  @default(now()) @map("created_at")
+  id                Int      @id @default(autoincrement())
+  cabinetId         Int      @map("cabinet_id")
+  reference         String?  @db.VarChar(50)
+  nom               String   @db.VarChar(200)
+  categorie         String?  @db.VarChar(100)
+  unite             String?  @db.VarChar(20)
+  quantiteActuelle  Decimal  @default(0) @map("quantite_actuelle") @db.Decimal(10, 2)
+  quantiteMinimum   Decimal  @default(0) @map("quantite_minimum") @db.Decimal(10, 2)
+  prixUnitaire      Decimal? @map("prix_unitaire") @db.Decimal(10, 3)
+  fournisseur       String?  @db.VarChar(200)
+  datePeremption    DateTime? @map("date_peremption") @db.Date
+  actif             Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  cabinet   Cabinet         @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
-  movements StockMovement[]
+  cabinet    Cabinet          @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  movements  StockMovement[]
 
   @@map("stock_items")
 }
 
 model StockMovement {
-  id            Int      @id @default(autoincrement())
-  stockItemId   Int      @map("stock_item_id")
-  typeMouvement String   @map("type_mouvement") @db.VarChar(20)
-  quantite      Decimal  @db.Decimal(10, 2)
-  motif         String?  @db.Text
-  dateMouvement DateTime @default(now()) @map("date_mouvement")
-  createdById   Int?     @map("created_by")
+  id             Int      @id @default(autoincrement())
+  stockItemId    Int      @map("stock_item_id")
+  typeMouvement  String   @map("type_mouvement") @db.VarChar(20)
+  quantite       Decimal  @db.Decimal(10, 2)
+  motif          String?  @db.Text
+  dateMouvement  DateTime @default(now()) @map("date_mouvement")
+  createdById    Int?     @map("created_by")
 
-  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
-  createdBy User?     @relation(fields: [createdById], references: [id])
+  stockItem  StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  createdBy  User?     @relation(fields: [createdById], references: [id])
 
   @@map("stock_movements")
 }
@@ -479,16 +506,16 @@ model StockMovement {
 // ============================================================
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int?     @map("user_id")
-  action     String   @db.VarChar(50)
-  entityType String?  @map("entity_type") @db.VarChar(50)
-  entityId   Int?     @map("entity_id")
-  details    Json?
-  ipAddress  String?  @map("ip_address") @db.VarChar(45)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id          Int      @id @default(autoincrement())
+  userId      Int?     @map("user_id")
+  action      String   @db.VarChar(50)
+  entityType  String?  @map("entity_type") @db.VarChar(50)
+  entityId    Int?     @map("entity_id")
+  details     Json?
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  user User? @relation(fields: [userId], references: [id])
+  user  User? @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([entityType, entityId])
