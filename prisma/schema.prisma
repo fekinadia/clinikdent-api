@@ -39,6 +39,7 @@ model Cabinet {
   stockItems            StockItem[]
   subscriptionPayments  SubscriptionPayment[]
   reminders             Reminder[]
+  prescriptionModeles   PrescriptionModele[]
 
   @@map("cabinets")
 }
@@ -89,6 +90,7 @@ model User {
   stockMovements        StockMovement[]
   auditLog              AuditLog[]
   remindersCreated      Reminder[]
+  prescriptionModelesCreated PrescriptionModele[]
 
   @@index([cabinetId])
   @@index([email])
@@ -521,4 +523,19 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+model PrescriptionModele {
+  id          Int      @id @default(autoincrement())
+  cabinetId   Int      @map("cabinet_id")
+  nom         String   @db.VarChar(150)
+  contenu     String   @db.Text
+  createdById Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([cabinetId])
+  @@map("prescription_modeles")
 }
