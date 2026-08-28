@@ -47,3 +47,15 @@ export class CreatePrescriptionDto {
   @Type(() => PrescriptionItemDto)
   items: PrescriptionItemDto[];
 }
+
+export class CreatePrescriptionModeleDto {
+  @ApiProperty({ example: 'Détartrage standard' })
+  @IsString()
+  @IsNotEmpty()
+  nom: string;
+
+  @ApiProperty({ example: 'Bain de bouche antiseptique...' })
+  @IsString()
+  @IsNotEmpty()
+  contenu: string;
+}
