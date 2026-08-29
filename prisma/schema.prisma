@@ -40,6 +40,10 @@ model Cabinet {
   subscriptionPayments  SubscriptionPayment[]
   reminders             Reminder[]
   prescriptionModeles   PrescriptionModele[]
+  automationSettings    AutomationSettings?
+  whatsappTemplates     WhatsAppTemplate[]
+  whatsappMessages      WhatsAppMessage[]
+  recalls               Recall[]
 
   @@map("cabinets")
 }
@@ -91,6 +95,7 @@ model User {
   auditLog              AuditLog[]
   remindersCreated      Reminder[]
   prescriptionModelesCreated PrescriptionModele[]
+  whatsappTemplatesCreated   WhatsAppTemplate[]
 
   @@index([cabinetId])
   @@index([email])
@@ -142,6 +147,8 @@ model Patient {
   images        PatientImage[]
   payments      Payment[]
   reminders     Reminder[]
+  recalls          Recall[]
+  whatsappMessages WhatsAppMessage[]
 
   @@index([cabinetId])
   @@index([numeroDossier])
@@ -189,6 +196,12 @@ model Appointment {
   type        AppointmentType? @relation(fields: [typeId], references: [id])
   createdBy   User?            @relation("AppointmentCreator", fields: [createdById], references: [id])
   treatments  Treatment[]
+  appointmentReminders       AppointmentReminder[]
+  whatsappMessages           WhatsAppMessage[]
+  noShowRecoveries           NoShowRecovery[]           @relation("NoShowRecoveryMissed")
+  noShowRecoveriesConverties NoShowRecovery[]           @relation("NoShowRecoveryNouveau")
+  recallsSource              Recall[]                   @relation("RecallAppointmentSource")
+  recallsConvertis           Recall[]                   @relation("RecallNouveauAppointment")
 
   @@index([patientId])
   @@index([medecinId])
@@ -538,4 +551,117 @@ model PrescriptionModele {
 
   @@index([cabinetId])
   @@map("prescription_modeles")
+}
+
+// ============================================================
+// AUTOMATISATION PATIENTS (rappels RDV, no-show, recall, WhatsApp)
+// ============================================================
+
+model AutomationSettings {
+  id                  Int      @id @default(autoincrement())
+  cabinetId           Int      @unique @map("cabinet_id")
+  rappelsActifs       Boolean  @default(true) @map("rappels_actifs")
+  noShowActif         Boolean  @default(true) @map("no_show_actif")
+  recallActif         Boolean  @default(true) @map("recall_actif")
+  rappelOffsetsHeures Int[]    @default([48, 24]) @map("rappel_offsets_heures")
+  delaiNoShowHeures   Int      @default(24) @map("delai_no_show_heures")
+  recallDefautMois    Int      @default(6) @map("recall_defaut_mois")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  cabinet Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  @@map("automation_settings")
+}
+
+model WhatsAppTemplate {
+  id                Int      @id @default(autoincrement())
+  cabinetId         Int      @map("cabinet_id")
+  type              String   @db.VarChar(20)
+  nom               String   @db.VarChar(150)
+  contenu           String   @db.Text
+  statutApprobation String   @default("brouillon") @map("statut_approbation") @db.VarChar(20)
+  metaTemplateName  String?  @map("meta_template_name") @db.VarChar(255)
+  createdById       Int      @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([cabinetId])
+  @@map("whatsapp_templates")
+}
+
+model AppointmentReminder {
+  id            Int       @id @default(autoincrement())
+  appointmentId Int       @map("appointment_id")
+  offsetHours   Int       @map("offset_hours")
+  statut        String    @default("programme") @db.VarChar(20)
+  envoyeAt      DateTime? @map("envoye_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, offsetHours])
+  @@map("appointment_reminders")
+}
+
+model WhatsAppMessage {
+  id            Int       @id @default(autoincrement())
+  cabinetId     Int       @map("cabinet_id")
+  patientId     Int       @map("patient_id")
+  appointmentId Int?      @map("appointment_id")
+  type          String    @db.VarChar(20)
+  statut        String    @default("programme") @db.VarChar(20)
+  contenuEnvoye String    @map("contenu_envoye") @db.Text
+  metaMessageId String?   @map("meta_message_id") @db.VarChar(150)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  cabinet     Cabinet      @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([cabinetId])
+  @@index([patientId])
+  @@index([appointmentId])
+  @@map("whatsapp_messages")
+}
+
+model NoShowRecovery {
+  id                   Int       @id @default(autoincrement())
+  appointmentId        Int       @map("appointment_id")
+  nouveauAppointmentId Int?      @map("nouveau_appointment_id")
+  statut               String    @default("en_attente") @db.VarChar(20)
+  relanceEnvoyeeAt     DateTime? @map("relance_envoyee_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  appointment        Appointment  @relation("NoShowRecoveryMissed", fields: [appointmentId], references: [id], onDelete: Cascade)
+  nouveauAppointment Appointment? @relation("NoShowRecoveryNouveau", fields: [nouveauAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId])
+  @@map("no_show_recoveries")
+}
+
+model Recall {
+  id                   Int       @id @default(autoincrement())
+  patientId            Int       @map("patient_id")
+  cabinetId            Int       @map("cabinet_id")
+  typeRecallMois       Int?      @map("type_recall_mois")
+  dateDerniereVisite   DateTime  @map("date_derniere_visite")
+  dateEcheance         DateTime  @map("date_echeance")
+  statut               String    @default("a_venir") @db.VarChar(20)
+  appointmentSourceId  Int?      @map("appointment_source_id")
+  nouveauAppointmentId Int?      @map("nouveau_appointment_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  patient            Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  cabinet            Cabinet      @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  appointmentSource  Appointment? @relation("RecallAppointmentSource", fields: [appointmentSourceId], references: [id], onDelete: SetNull)
+  nouveauAppointment Appointment? @relation("RecallNouveauAppointment", fields: [nouveauAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([cabinetId])
+  @@index([patientId])
+  @@map("recalls")
 }
