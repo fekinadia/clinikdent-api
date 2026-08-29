@@ -10,6 +10,8 @@ import { BillingModule } from './billing/billing.module';
 import { PatientImagesModule } from './patient-images/patient-images.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { StatisticsModule } from './statistics/statistics.module';
+import { AutomationModule } from './automation/automation.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { StatisticsModule } from './statistics/statistics.module';
     PatientImagesModule,
     RemindersModule,
     StatisticsModule,
+    AutomationModule,
+    WhatsAppModule,
   ],
 })
 export class AppModule {}
