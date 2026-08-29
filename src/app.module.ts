@@ -14,6 +14,7 @@ import { RemindersModule } from './reminders/reminders.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { AutomationModule } from './automation/automation.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { FinanceModule } from './finance/finance.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     StatisticsModule,
     AutomationModule,
     WhatsAppModule,
+    FinanceModule,
   ],
 })
 export class AppModule {}
