@@ -40,10 +40,10 @@ export class CreateAppointmentDto {
 
 export class UpdateAppointmentDto extends PartialType(CreateAppointmentDto) {
   @ApiPropertyOptional({
-    enum: ['planifie', 'confirme', 'en_cours', 'termine', 'annule', 'absent'],
+    enum: ['planifie', 'confirme', 'en_cours', 'termine', 'annule', 'absent', 'a_reprogrammer', 'no_show'],
   })
   @IsOptional()
-  @IsIn(['planifie', 'confirme', 'en_cours', 'termine', 'annule', 'absent'])
+  @IsIn(['planifie', 'confirme', 'en_cours', 'termine', 'annule', 'absent', 'a_reprogrammer', 'no_show'])
   statut?: string;
 }
 
