@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateAppointmentDto,
@@ -13,7 +14,10 @@ import {
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   async create(cabinetId: number, userId: number, dto: CreateAppointmentDto) {
     const dateDebut = new Date(dto.dateDebut);
@@ -54,7 +58,7 @@ export class AppointmentsService {
       }
     }
 
-    return this.prisma.appointment.create({
+    const appointment = await this.prisma.appointment.create({
       data: {
         patientId: dto.patientId,
         medecinId: dto.medecinId,
@@ -70,6 +74,13 @@ export class AppointmentsService {
         type: true,
       },
     });
+
+    this.eventEmitter.emit('appointment.created', {
+      appointmentId: appointment.id,
+      cabinetId: appointment.cabinetId,
+    });
+
+    return appointment;
   }
 
   async findAll(cabinetId: number, query: ListAppointmentsQueryDto) {
@@ -131,7 +142,7 @@ export class AppointmentsService {
   }
 
   async update(cabinetId: number, id: number, dto: UpdateAppointmentDto) {
-    await this.findOne(cabinetId, id);
+    const before = await this.findOne(cabinetId, id);
 
     // Si le RDV est ré-attaché à un autre patient/médecin/type, vérifier
     // que ces entités appartiennent bien au même cabinet (anti cross-tenant).
@@ -150,7 +161,7 @@ export class AppointmentsService {
       await this.assertTypeInCabinet(cabinetId, dto.typeId);
     }
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
         ...dto,
@@ -159,6 +170,36 @@ export class AppointmentsService {
       },
       include: { patient: true, type: true },
     });
+
+    // Émission d'événements d'automatisation (Phase 2) uniquement si le statut
+    // a réellement changé vers une des valeurs suivies — comportement métier inchangé sinon.
+    if (dto.statut !== undefined && dto.statut !== before.statut) {
+      if (updated.statut === 'confirme') {
+        this.eventEmitter.emit('appointment.confirmed', {
+          appointmentId: updated.id,
+          cabinetId: updated.cabinetId,
+        });
+      } else if (updated.statut === 'annule') {
+        this.eventEmitter.emit('appointment.cancelled', {
+          appointmentId: updated.id,
+          cabinetId: updated.cabinetId,
+        });
+      } else if (updated.statut === 'termine') {
+        this.eventEmitter.emit('appointment.completed', {
+          appointmentId: updated.id,
+          cabinetId: updated.cabinetId,
+          patientId: updated.patientId,
+        });
+      } else if (updated.statut === 'no_show') {
+        this.eventEmitter.emit('appointment.no_show', {
+          appointmentId: updated.id,
+          cabinetId: updated.cabinetId,
+          patientId: updated.patientId,
+        });
+      }
+    }
+
+    return updated;
   }
 
   async delete(cabinetId: number, id: number) {
