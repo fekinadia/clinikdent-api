@@ -413,14 +413,16 @@ model PatientImage {
 // ============================================================
 
 model Reminder {
-  id           Int      @id @default(autoincrement())
-  cabinetId    Int      @map("cabinet_id")
-  patientId    Int      @map("patient_id")
-  dateRappel   DateTime @map("date_rappel") @db.Date
-  note         String?  @db.Text
-  termine      Boolean  @default(false)
-  createdById  Int?     @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id           Int       @id @default(autoincrement())
+  cabinetId    Int       @map("cabinet_id")
+  patientId    Int       @map("patient_id")
+  dateRappel   DateTime  @map("date_rappel") @db.Date
+  note         String?   @db.Text
+  termine      Boolean   @default(false)
+  smsEnvoye    Boolean   @default(false) @map("sms_envoye")
+  smsEnvoyeAt  DateTime? @map("sms_envoye_at")
+  createdById  Int?      @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   cabinet    Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
