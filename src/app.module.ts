@@ -15,6 +15,7 @@ import { StatisticsModule } from './statistics/statistics.module';
 import { AutomationModule } from './automation/automation.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { FinanceModule } from './finance/finance.module';
+import { SmsModule } from './sms/sms.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { FinanceModule } from './finance/finance.module';
     AutomationModule,
     WhatsAppModule,
     FinanceModule,
+    SmsModule,
   ],
 })
 export class AppModule {}
