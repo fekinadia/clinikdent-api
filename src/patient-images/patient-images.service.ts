@@ -9,7 +9,6 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TypeImagePatient } from './dto/patient-image.dto';
 
-const MIME_AUTORISES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const TAILLE_MAX_OCTETS = 15 * 1024 * 1024; // 15 Mo
 const DUREE_URL_SIGNEE = 300; // secondes
 
@@ -52,11 +51,6 @@ export class PatientImagesService {
 
     if (!file) {
       throw new BadRequestException('Aucun fichier reçu');
-    }
-    if (!MIME_AUTORISES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        'Format non supporté. Formats acceptés : JPEG, PNG, WEBP, PDF.',
-      );
     }
     if (file.size > TAILLE_MAX_OCTETS) {
       throw new BadRequestException('Fichier trop volumineux (15 Mo maximum)');
