@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTreatmentDto, RecordPaymentDto, UpdateToothStateDto } from './dto/treatment.dto';
+import {
+  CreateTreatmentDto,
+  RecordPaymentDto,
+  UpdateToothStateDto,
+  UpdateTreatmentDto,
+} from './dto/treatment.dto';
 
 @Injectable()
 export class TreatmentsService {
@@ -64,6 +69,45 @@ export class TreatmentsService {
         },
       },
       include: { acts: true, patient: true },
+    });
+  }
+
+  async update(cabinetId: number, treatmentId: number, dto: UpdateTreatmentDto) {
+    const treatment = await this.prisma.treatment.findUnique({
+      where: { id: treatmentId },
+      include: { patient: true, acts: true },
+    });
+    if (!treatment || treatment.patient.cabinetId !== cabinetId) {
+      throw new ForbiddenException();
+    }
+
+    if (dto.acts) {
+      const validIds = new Set(treatment.acts.map((a) => a.id));
+      const invalid = dto.acts.some((a) => !validIds.has(a.id));
+      if (invalid) {
+        throw new ForbiddenException('Acte invalide');
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.treatment.update({
+        where: { id: treatmentId },
+        data: {
+          ...(dto.dateSoin ? { dateSoin: new Date(dto.dateSoin) } : {}),
+          ...(dto.observations !== undefined ? { observations: dto.observations } : {}),
+        },
+      }),
+      ...(dto.acts ?? []).map((a) =>
+        this.prisma.treatmentAct.update({
+          where: { id: a.id },
+          data: { libelle: a.libelle, dents: a.dents },
+        }),
+      ),
+    ]);
+
+    return this.prisma.treatment.findUnique({
+      where: { id: treatmentId },
+      include: { acts: true },
     });
   }
 
