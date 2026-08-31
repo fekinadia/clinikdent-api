@@ -81,6 +81,41 @@ export class CreateTreatmentDto {
   acts: TreatmentActDto[];
 }
 
+export class UpdateTreatmentActDto {
+  @ApiProperty({ description: "ID de l'acte à modifier (doit appartenir à la séance)" })
+  @IsInt()
+  id: number;
+
+  @ApiProperty({ example: 'Détartrage' })
+  @IsString()
+  @IsNotEmpty()
+  libelle: string;
+
+  @ApiPropertyOptional({ example: '11;12;13', description: 'Dents séparées par ;' })
+  @IsOptional()
+  @IsString()
+  dents?: string;
+}
+
+export class UpdateTreatmentDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dateSoin?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  observations?: string;
+
+  @ApiPropertyOptional({ type: [UpdateTreatmentActDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateTreatmentActDto)
+  acts?: UpdateTreatmentActDto[];
+}
+
 export class UpdateToothStateDto {
   @ApiProperty({ example: 11, description: 'Numéro de dent FDI' })
   @IsInt()
