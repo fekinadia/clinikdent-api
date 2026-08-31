@@ -394,7 +394,7 @@ model PatientImage {
   titre          String?   @db.VarChar(200)
   cheminFichier  String    @map("chemin_fichier") @db.Text
   tailleOctets   BigInt?   @map("taille_octets")
-  mimeType       String?   @map("mime_type") @db.VarChar(50)
+  mimeType       String?   @map("mime_type") @db.VarChar(150)
   datePrise      DateTime? @map("date_prise") @db.Date
   observation    String?   @db.Text
   uploadedById   Int?      @map("uploaded_by")
