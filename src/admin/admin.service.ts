@@ -2,10 +2,11 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDemoAccountDto } from './dto/admin.dto';
-import { DEMO_DURATION_HOURS } from '../billing/plan-limits';
+import { DEMO_DURATION_HOURS, TRIAL_DAYS } from '../billing/plan-limits';
 
 function generatePassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const chars =
+    'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   let result = '';
   for (let i = 0; i < 10; i++) {
     result += chars[Math.floor(Math.random() * chars.length)];
@@ -27,13 +28,23 @@ export class AdminService {
 
     const password = generatePassword();
     const passwordHash = await bcrypt.hash(password, 10);
+    const estPermanent = dto.type === 'permanent';
 
-    const demoExpiresAt = new Date();
-    demoExpiresAt.setHours(demoExpiresAt.getHours() + DEMO_DURATION_HOURS);
+    const demoExpiresAt = estPermanent
+      ? null
+      : new Date(Date.now() + DEMO_DURATION_HOURS * 60 * 60 * 1000);
+    const trialEndsAt = estPermanent
+      ? new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+      : null;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const cabinet = await tx.cabinet.create({
-        data: { nom: dto.nomCabinet, estDemo: true, demoExpiresAt },
+        data: {
+          nom: dto.nomCabinet,
+          estDemo: !estPermanent,
+          demoExpiresAt,
+          trialEndsAt,
+        },
       });
 
       const user = await tx.user.create({
@@ -55,7 +66,9 @@ export class AdminService {
       nomCabinet: result.cabinet.nom,
       email: result.user.email,
       password,
-      demoExpiresAt,
+      type: estPermanent ? 'permanent' : 'demo',
+      demoExpiresAt: result.cabinet.demoExpiresAt,
+      trialEndsAt: result.cabinet.trialEndsAt,
     };
   }
 
@@ -66,14 +79,13 @@ export class AdminService {
       include: { users: { take: 1, orderBy: { id: 'asc' } } },
     });
 
-    const now = new Date();
     return cabinets.map((c) => ({
       cabinetId: c.id,
       nomCabinet: c.nom,
       email: c.users[0]?.email ?? null,
       createdAt: c.createdAt,
       demoExpiresAt: c.demoExpiresAt,
-      expired: !!c.demoExpiresAt && c.demoExpiresAt < now,
+      expired: !!(c.demoExpiresAt && c.demoExpiresAt < new Date()),
     }));
   }
 }
