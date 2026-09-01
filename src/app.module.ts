@@ -16,6 +16,7 @@ import { AutomationModule } from './automation/automation.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { FinanceModule } from './finance/finance.module';
 import { SmsModule } from './sms/sms.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { SmsModule } from './sms/sms.module';
     WhatsAppModule,
     FinanceModule,
     SmsModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
