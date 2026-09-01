@@ -1,5 +1,7 @@
 export const TRIAL_DAYS = 14;
 
+export const DEMO_DURATION_HOURS = 24;
+
 export type PlanKey = 'starter' | 'pro' | 'premium';
 
 export interface PlanDefinition {
