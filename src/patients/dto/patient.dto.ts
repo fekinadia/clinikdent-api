@@ -32,6 +32,12 @@ export class CreatePatientDto {
   @MaxLength(20)
   numeroDossier?: string;
 
+  @ApiPropertyOptional({ example: 'https://instagram.com/mon_compte' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  reseauSocial?: string;
+
   @ApiPropertyOptional({ example: '1986-03-30' })
   @IsOptional()
   @IsDateString()
