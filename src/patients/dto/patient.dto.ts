@@ -22,6 +22,16 @@ export class CreatePatientDto {
   @MaxLength(100)
   prenom: string;
 
+  @ApiPropertyOptional({
+    example: '00007',
+    description:
+      'Numéro de dossier personnalisé. Laissé vide, il est généré automatiquement (incrémental par cabinet).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  numeroDossier?: string;
+
   @ApiPropertyOptional({ example: '1986-03-30' })
   @IsOptional()
   @IsDateString()
