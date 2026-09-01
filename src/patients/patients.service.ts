@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
 import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
@@ -9,23 +9,38 @@ export class PatientsService {
 
   async create(cabinetId: number, userId: number, dto: CreatePatientDto) {
     await this.assertSousLaLimite(cabinetId);
-    // Générer le numéro de dossier (incrémental par cabinet)
-    const last = await this.prisma.patient.findFirst({
-      where: { cabinetId },
-      orderBy: { id: 'desc' },
-    });
-    const lastNum = last ? parseInt(last.numeroDossier) : 0;
-    const numeroDossier = String(lastNum + 1).padStart(5, '0');
 
-    return this.prisma.patient.create({
-      data: {
-        ...dto,
-        dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
-        numeroDossier,
-        cabinetId,
-        createdById: userId,
-      },
-    });
+    const numeroDossierSaisi = dto.numeroDossier?.trim();
+    let numeroDossier: string;
+    if (numeroDossierSaisi) {
+      // Numéro de dossier saisi manuellement par le médecin
+      numeroDossier = numeroDossierSaisi;
+    } else {
+      // Générer le numéro de dossier (incrémental par cabinet)
+      const last = await this.prisma.patient.findFirst({
+        where: { cabinetId },
+        orderBy: { id: 'desc' },
+      });
+      const lastNum = last && !isNaN(parseInt(last.numeroDossier)) ? parseInt(last.numeroDossier) : 0;
+      numeroDossier = String(lastNum + 1).padStart(5, '0');
+    }
+
+    try {
+      return await this.prisma.patient.create({
+        data: {
+          ...dto,
+          dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
+          numeroDossier,
+          cabinetId,
+          createdById: userId,
+        },
+      });
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        throw new ConflictException('Ce numéro de dossier est déjà utilisé');
+      }
+      throw e;
+    }
   }
 
   async findAll(cabinetId: number, query: ListPatientsQueryDto) {
@@ -91,13 +106,20 @@ export class PatientsService {
   async update(cabinetId: number, id: number, dto: UpdatePatientDto) {
     await this.findOne(cabinetId, id); // vérifier l'accès
 
-    return this.prisma.patient.update({
-      where: { id },
-      data: {
-        ...dto,
-        dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : undefined,
-      },
-    });
+    try {
+      return await this.prisma.patient.update({
+        where: { id },
+        data: {
+          ...dto,
+          dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : undefined,
+        },
+      });
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        throw new ConflictException('Ce numéro de dossier est déjà utilisé');
+      }
+      throw e;
+    }
   }
 
   async delete(cabinetId: number, id: number) {
