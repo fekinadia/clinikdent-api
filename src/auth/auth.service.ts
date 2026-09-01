@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -14,6 +15,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private config: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -50,7 +52,11 @@ export class AuthService {
       return { cabinet, user };
     });
 
-    return this.signToken(result.user.id, result.user.email, result.user.cabinetId);
+    return this.signToken(
+      result.user.id,
+      result.user.email,
+      result.user.cabinetId,
+    );
   }
 
   async login(dto: LoginDto) {
@@ -74,9 +80,15 @@ export class AuthService {
     const payload = { sub: userId, email, cabinetId };
     const token = await this.jwtService.signAsync(payload);
 
+    const adminEmails = (this.config.get<string>('PLATFORM_ADMIN_EMAILS') || '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isPlatformAdmin = adminEmails.includes(email.toLowerCase());
+
     return {
       accessToken: token,
-      user: { id: userId, email, cabinetId },
+      user: { id: userId, email, cabinetId, isPlatformAdmin },
     };
   }
 }
