@@ -27,6 +27,8 @@ model Cabinet {
   subscriptionStatus  String   @default("trial") @map("subscription_status") @db.VarChar(20)
   trialEndsAt         DateTime? @map("trial_ends_at")
   subscriptionEndsAt  DateTime? @map("subscription_ends_at")
+  estDemo             Boolean   @default(false) @map("est_demo")
+  demoExpiresAt       DateTime? @map("demo_expires_at")
   createdAt           DateTime @default(now()) @map("created_at")
 
   users                 User[]
