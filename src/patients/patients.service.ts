@@ -37,10 +37,35 @@ export class PatientsService {
       });
     } catch (e: any) {
       if (e.code === 'P2002') {
-        throw new ConflictException('Ce numéro de dossier est déjà utilisé');
+        throw new ConflictException(this.messageConflitUnicite(e));
       }
       throw e;
     }
+  }
+
+  /**
+   * Traduit une erreur Prisma P2002 (violation de contrainte unique) en un
+   * message compréhensible, selon la colonne réellement en conflit
+   * (`e.meta.target`), au lieu de supposer systématiquement qu'il s'agit du
+   * numéro de dossier.
+   */
+  private messageConflitUnicite(e: any): string {
+    const target: string[] = Array.isArray(e?.meta?.target)
+      ? e.meta.target
+      : typeof e?.meta?.target === 'string'
+        ? [e.meta.target]
+        : [];
+
+    if (target.some((t) => t.includes('numero_dossier'))) {
+      return 'Ce numéro de dossier est déjà utilisé';
+    }
+    if (target.some((t) => t.includes('gsm'))) {
+      return 'Ce numéro de téléphone est déjà utilisé';
+    }
+    if (target.some((t) => t.includes('email'))) {
+      return 'Cette adresse email est déjà utilisée';
+    }
+    return 'Cette information existe déjà pour un autre patient';
   }
 
   async findAll(cabinetId: number, query: ListPatientsQueryDto) {
@@ -116,7 +141,7 @@ export class PatientsService {
       });
     } catch (e: any) {
       if (e.code === 'P2002') {
-        throw new ConflictException('Ce numéro de dossier est déjà utilisé');
+        throw new ConflictException(this.messageConflitUnicite(e));
       }
       throw e;
     }
