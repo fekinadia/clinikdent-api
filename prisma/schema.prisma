@@ -111,7 +111,7 @@ model User {
 model Patient {
   id                  Int       @id @default(autoincrement())
   cabinetId           Int       @map("cabinet_id")
-  numeroDossier       String    @unique @map("numero_dossier") @db.VarChar(20)
+  numeroDossier       String    @map("numero_dossier") @db.VarChar(20)
   ancienNumero        String?   @map("ancien_numero") @db.VarChar(20)
   nom                 String    @db.VarChar(100)
   prenom              String    @db.VarChar(100)
@@ -153,6 +153,7 @@ model Patient {
   recalls          Recall[]
   whatsappMessages WhatsAppMessage[]
 
+  @@unique([cabinetId, numeroDossier])
   @@index([cabinetId])
   @@index([numeroDossier])
   @@index([nom, prenom])
