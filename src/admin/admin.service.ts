@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDemoAccountDto } from './dto/admin.dto';
@@ -125,5 +125,21 @@ export class AdminService {
         statut,
       };
     });
+  }
+
+  async deleteAccount(cabinetId: number) {
+    const cabinet = await this.prisma.cabinet.findUnique({
+      where: { id: cabinetId },
+    });
+    if (!cabinet) {
+      throw new NotFoundException('Compte introuvable');
+    }
+
+    // La suppression du cabinet entraîne, via les relations Prisma
+    // (onDelete: Cascade), la suppression de toutes ses données liées :
+    // utilisateurs, patients, rendez-vous, soins, ordonnances, paiements, etc.
+    await this.prisma.cabinet.delete({ where: { id: cabinetId } });
+
+    return { success: true, cabinetId, nomCabinet: cabinet.nom };
   }
 }
