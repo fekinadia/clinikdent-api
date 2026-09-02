@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
 import { PlatformAdminGuard } from './platform-admin.guard';
@@ -28,5 +37,14 @@ export class AdminController {
   @ApiOperation({ summary: 'Lister tous les comptes (démo + permanents)' })
   listAllAccounts() {
     return this.adminService.listAllAccounts();
+  }
+
+  @Delete('accounts/:id')
+  @ApiOperation({
+    summary:
+      'Supprimer définitivement un compte (cabinet) et toutes ses données liées',
+  })
+  deleteAccount(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.deleteAccount(id);
   }
 }
