@@ -23,4 +23,10 @@ export class AdminController {
   listDemoAccounts() {
     return this.adminService.listDemoAccounts();
   }
+
+  @Get('accounts')
+  @ApiOperation({ summary: 'Lister tous les comptes (démo + permanents)' })
+  listAllAccounts() {
+    return this.adminService.listAllAccounts();
+  }
 }
