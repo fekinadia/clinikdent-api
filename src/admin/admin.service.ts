@@ -88,4 +88,42 @@ export class AdminService {
       expired: !!(c.demoExpiresAt && c.demoExpiresAt < new Date()),
     }));
   }
+
+  async listAllAccounts() {
+    const cabinets = await this.prisma.cabinet.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { users: { take: 1, orderBy: { id: 'asc' } } },
+    });
+
+    const now = new Date();
+
+    return cabinets.map((c) => {
+      const type: 'demo' | 'permanent' = c.estDemo ? 'demo' : 'permanent';
+
+      let statut: string;
+      if (c.estDemo) {
+        statut = c.demoExpiresAt && c.demoExpiresAt < now ? 'expire' : 'actif';
+      } else if (c.subscriptionStatus === 'active') {
+        statut = 'abonne';
+      } else if (c.trialEndsAt && c.trialEndsAt < now) {
+        statut = 'essai_termine';
+      } else {
+        statut = 'essai';
+      }
+
+      return {
+        cabinetId: c.id,
+        nomCabinet: c.nom,
+        email: c.users[0]?.email ?? null,
+        type,
+        plan: c.plan,
+        subscriptionStatus: c.subscriptionStatus,
+        createdAt: c.createdAt,
+        demoExpiresAt: c.demoExpiresAt,
+        trialEndsAt: c.trialEndsAt,
+        subscriptionEndsAt: c.subscriptionEndsAt,
+        statut,
+      };
+    });
+  }
 }
