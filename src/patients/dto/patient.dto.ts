@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsIn,
@@ -82,6 +83,15 @@ export class CreatePatientDto {
   @IsOptional()
   @IsString()
   antecedents?: string;
+  
+  @ApiPropertyOptional({
+    description:
+      "Marque la fiche comme un simple prospect (créée à la volée lors d'un RDV, pas encore un vrai patient). Se remet automatiquement à false dès que la fiche est modifiée ou que le patient honore un rendez-vous.",
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  estProspect?: boolean;
 }
 
 export class UpdatePatientDto extends PartialType(CreatePatientDto) {}
