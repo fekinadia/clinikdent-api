@@ -137,6 +137,7 @@ model Patient {
   autresInfos         String?   @map("autres_infos") @db.Text
   photoUrl            String?   @map("photo_url") @db.Text
   reseauSocial        String?   @map("reseau_social") @db.VarChar(255)
+  estProspect         Boolean   @default(false) @map("est_prospect")
   createdById         Int?      @map("created_by")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
