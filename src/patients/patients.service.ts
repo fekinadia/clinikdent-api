@@ -15,14 +15,15 @@ async create(cabinetId: number, userId: number, dto: CreatePatientDto) {
   // Numero de dossier saisi manuellement par le medecin : pas de retry,
   // une collision est une vraie erreur a signaler telle quelle.
   if (numeroDossierSaisi) {
-    try {
-      return await this.prisma.patient.create({
+       try {
+      return await this.prisma.patient.update({
+        where: { id },
         data: {
           ...dto,
-          dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
-          numeroDossier: numeroDossierSaisi,
-          cabinetId,
-          createdById: userId,
+          dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : undefined,
+          // Toute modification manuelle de la fiche confirme que ce n'est plus
+          // un simple prospect créé à la volée depuis l'Agenda.
+          estProspect: false,
         },
       });
     } catch (e: any) {
