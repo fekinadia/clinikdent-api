@@ -171,6 +171,21 @@ export class AppointmentsService {
       include: { patient: true, type: true },
     });
 
+       // Le patient s'est présenté au cabinet : s'il avait été créé comme simple
+    // prospect à la volée depuis l'Agenda, on le confirme désormais comme un
+    // vrai patient (retire le badge « Prospect » de la liste Patients).
+    if (
+      dto.statut !== undefined &&
+      dto.statut !== before.statut &&
+      (updated.statut === 'en_cours' || updated.statut === 'termine') &&
+      updated.patient.estProspect
+    ) {
+      await this.prisma.patient.update({
+        where: { id: updated.patientId },
+        data: { estProspect: false },
+      });
+    }
+
     // Émission d'événements d'automatisation (Phase 2) uniquement si le statut
     // a réellement changé vers une des valeurs suivies — comportement métier inchangé sinon.
     if (dto.statut !== undefined && dto.statut !== before.statut) {
