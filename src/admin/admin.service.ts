@@ -1,8 +1,14 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import { CreateDemoAccountDto } from './dto/admin.dto';
 import { DEMO_DURATION_HOURS, TRIAL_DAYS } from '../billing/plan-limits';
+
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
+}
 
 function generatePassword(): string {
   const chars =
@@ -16,9 +22,12 @@ function generatePassword(): string {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLog: AuditLogService,
+  ) {}
 
-  async createDemoAccount(dto: CreateDemoAccountDto) {
+  async createDemoAccount(dto: CreateDemoAccountDto, actor?: ActorContext) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -59,6 +68,20 @@ export class AdminService {
       });
 
       return { cabinet, user };
+    });
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId: result.cabinet.id,
+      action: 'user.create',
+      entityType: 'User',
+      entityId: result.user.id,
+      details: {
+        type: estPermanent ? 'permanent' : 'demo',
+        nomCabinet: result.cabinet.nom,
+        email: result.user.email,
+      },
+      ipAddress: actor?.ipAddress,
     });
 
     return {
@@ -127,7 +150,7 @@ export class AdminService {
     });
   }
 
-  async deleteAccount(cabinetId: number) {
+  async deleteAccount(cabinetId: number, actor?: ActorContext) {
     const cabinet = await this.prisma.cabinet.findUnique({
       where: { id: cabinetId },
     });
@@ -139,6 +162,20 @@ export class AdminService {
     // (onDelete: Cascade), la suppression de toutes ses données liées :
     // utilisateurs, patients, rendez-vous, soins, ordonnances, paiements, etc.
     await this.prisma.cabinet.delete({ where: { id: cabinetId } });
+
+    // Écrit après la suppression : cabinetId n'a plus de contrainte de clé
+    // étrangère vers `cabinets` sur AuditLog (colonne simple, non relation),
+    // donc l'entrée reste consultable même une fois le cabinet supprimé —
+    // c'est justement le but d'une trace d'audit pour une action destructive.
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'cabinet.delete',
+      entityType: 'Cabinet',
+      entityId: cabinetId,
+      details: { nomCabinet: cabinet.nom },
+      ipAddress: actor?.ipAddress,
+    });
 
     return { success: true, cabinetId, nomCabinet: cabinet.nom };
   }

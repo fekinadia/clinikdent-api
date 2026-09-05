@@ -56,6 +56,7 @@ export class AuthService {
       result.user.id,
       result.user.email,
       result.user.cabinetId,
+      result.user.role,
     );
   }
 
@@ -73,10 +74,21 @@ export class AuthService {
       throw new UnauthorizedException('Identifiants incorrects');
     }
 
-    return this.signToken(user.id, user.email, user.cabinetId);
+    return this.signToken(user.id, user.email, user.cabinetId, user.role);
   }
 
-  private async signToken(userId: number, email: string, cabinetId: number) {
+  // Le payload JWT reste volontairement minimal (sub/email/cabinetId) : le
+  // rôle et le statut du compte ne sont jamais lus depuis le jeton pour une
+  // décision d'autorisation, seulement depuis une lecture fraîche en base à
+  // chaque requête (voir JwtStrategy.validate). `role` n'est renvoyé ici
+  // que pour permettre au frontend d'adapter son affichage (UX uniquement,
+  // pas une frontière de sécurité — voir audit du 2026-09-05, section 10).
+  private async signToken(
+    userId: number,
+    email: string,
+    cabinetId: number,
+    role: string,
+  ) {
     const payload = { sub: userId, email, cabinetId };
     const token = await this.jwtService.signAsync(payload);
 
@@ -88,7 +100,7 @@ export class AuthService {
 
     return {
       accessToken: token,
-      user: { id: userId, email, cabinetId, isPlatformAdmin },
+      user: { id: userId, email, cabinetId, role, isPlatformAdmin },
     };
   }
 }

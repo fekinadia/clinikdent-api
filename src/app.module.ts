@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { RolesGuard } from './auth/roles.guard';
+import { AuditLogModule } from './audit/audit-log.module';
 import { PatientsModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { TreatmentsModule } from './treatments/treatments.module';
@@ -24,6 +27,7 @@ import { AdminModule } from './admin/admin.module';
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     PrismaModule,
+    AuditLogModule,
     AuthModule,
     PatientsModule,
     AppointmentsModule,
@@ -38,6 +42,12 @@ import { AdminModule } from './admin/admin.module';
     FinanceModule,
     SmsModule,
     AdminModule,
+  ],
+  providers: [
+    // Enregistré globalement pour éviter de dupliquer @UseGuards(RolesGuard)
+    // dans chaque contrôleur — voir src/auth/roles.guard.ts. Ne prend une
+    // décision que sur les routes portant explicitement @Roles(...).
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}
