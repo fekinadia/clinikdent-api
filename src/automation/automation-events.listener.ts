@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import { AutomationSettingsService } from './automation-settings.service';
 
 const PRISMA_UNIQUE_CONSTRAINT_ERROR = 'P2002';
@@ -38,6 +39,7 @@ export class AutomationEventsListener {
   constructor(
     private prisma: PrismaService,
     private automationSettingsService: AutomationSettingsService,
+    private auditLog: AuditLogService,
   ) {}
 
   @OnEvent('appointment.created')
@@ -116,18 +118,71 @@ export class AutomationEventsListener {
     const settings = await this.automationSettingsService.get(payload.cabinetId);
     if (!settings.noShowActif) return;
 
-    // Idempotence : une relance existe déjà pour ce RDV.
+    // Idempotence : le check-then-act ci-dessous reste la première ligne de
+    // défense (évite un aller-retour DB inutile dans le cas courant), mais
+    // la garantie réelle vient de la contrainte @@unique(appointmentId)
+    // (STEP 4) — si deux déclenchements concurrents (cron + action manuelle,
+    // ou double passage de cron) passent tous les deux ce check, le create()
+    // qui échouera avec P2002 est rattrapé ci-dessous sans lever d'erreur.
     const existing = await this.prisma.noShowRecovery.findFirst({
       where: { appointmentId: payload.appointmentId },
     });
     if (existing) return;
 
-    await this.prisma.noShowRecovery.create({
-      data: {
-        appointmentId: payload.appointmentId,
-        statut: 'en_attente',
-      },
+    let recovery;
+    try {
+      recovery = await this.prisma.noShowRecovery.create({
+        data: {
+          appointmentId: payload.appointmentId,
+          statut: 'en_attente',
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === PRISMA_UNIQUE_CONSTRAINT_ERROR
+      ) {
+        // Une autre exécution concurrente a créé la relance entre notre
+        // lecture et notre écriture : rien à faire, pas de doublon.
+        return;
+      }
+      throw error;
+    }
+
+    // Événement système par nature (peu importe si le no-show a été
+    // détecté automatiquement ou marqué manuellement — voir 'appointment.no_show'
+    // pour l'audit de CE déclenchement) : userId volontairement absent.
+    await this.auditLog.log({
+      userId: null,
+      cabinetId: payload.cabinetId,
+      action: 'no_show_recovery.created',
+      entityType: 'NoShowRecovery',
+      entityId: recovery.id,
+      details: { appointmentId: payload.appointmentId },
     });
+  }
+
+  /**
+   * STEP 4 — correction d'une classification no-show erronée : le RDV
+   * source est sorti du statut no_show (voir AppointmentsService.update()).
+   * On invalide la relance associée (statut 'annule', jamais supprimée —
+   * garde l'historique) pour que le scheduler ne l'envoie plus jamais.
+   * Idempotent par construction : updateMany ne cible que 'en_attente', un
+   * second appel sur une relance déjà 'annule'/'recupere'/'perdu' est un
+   * no-op silencieux (count === 0).
+   */
+  @OnEvent('appointment.no_show_corrected')
+  async handleAppointmentNoShowCorrected(payload: AppointmentStatusPayload) {
+    const result = await this.prisma.noShowRecovery.updateMany({
+      where: { appointmentId: payload.appointmentId, statut: 'en_attente' },
+      data: { statut: 'annule' },
+    });
+
+    if (result.count > 0) {
+      this.logger.log(
+        `Relance no-show annulée pour le RDV ${payload.appointmentId} (statut corrigé)`,
+      );
+    }
   }
 
   @OnEvent('appointment.cancelled')

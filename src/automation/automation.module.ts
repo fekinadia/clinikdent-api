@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditLogModule } from '../audit/audit-log.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { AutomationSettingsController } from './automation-settings.controller';
 import { AutomationSettingsService } from './automation-settings.service';
@@ -14,7 +15,7 @@ import { AutomationEventsListener } from './automation-events.listener';
 import { AutomationSchedulerService } from './automation-scheduler.service';
 
 @Module({
-  imports: [WhatsAppModule],
+  imports: [WhatsAppModule, AuditLogModule],
   controllers: [
     AutomationSettingsController,
     WhatsAppTemplatesController,

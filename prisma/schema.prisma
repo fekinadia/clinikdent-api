@@ -646,8 +646,12 @@ model WhatsAppMessage {
 
 model NoShowRecovery {
   id                   Int       @id @default(autoincrement())
-  appointmentId        Int       @map("appointment_id")
+  appointmentId        Int       @unique @map("appointment_id")
   nouveauAppointmentId Int?      @map("nouveau_appointment_id")
+  // Valeurs : en_attente | recupere | perdu | annule (STEP 4 — voir
+  // AutomationEventsListener.handleAppointmentNoShowCorrected : une
+  // relance passe à 'annule', jamais supprimée, quand le RDV source est
+  // recorrigé hors du statut no_show avant que la relance ait été traitée).
   statut               String    @default("en_attente") @db.VarChar(20)
   relanceEnvoyeeAt     DateTime? @map("relance_envoyee_at")
   createdAt            DateTime  @default(now()) @map("created_at")
@@ -655,7 +659,6 @@ model NoShowRecovery {
   appointment        Appointment  @relation("NoShowRecoveryMissed", fields: [appointmentId], references: [id], onDelete: Cascade)
   nouveauAppointment Appointment? @relation("NoShowRecoveryNouveau", fields: [nouveauAppointmentId], references: [id], onDelete: SetNull)
 
-  @@index([appointmentId])
   @@map("no_show_recoveries")
 }
 

@@ -8,8 +8,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
@@ -55,8 +57,28 @@ export class AppointmentsController {
     @CurrentUser() user: CurrentUserType,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAppointmentDto,
+    @Req() req: Request,
   ) {
-    return this.appointmentsService.update(user.cabinetId, id, dto);
+    return this.appointmentsService.update(user.cabinetId, id, dto, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
+
+  // STEP 4 — endpoint dédié plutôt que de compter sur le frontend pour
+  // envoyer le bon PATCH générique : validation métier (RDV pas déjà
+  // résolu), idempotence garantie côté serveur, audit systématique.
+  @Post(':id/no-show')
+  @ApiOperation({ summary: 'Marquer un rendez-vous comme no-show (idempotent)' })
+  markNoShow(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    return this.appointmentsService.markNoShow(user.cabinetId, id, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
   }
 
   @Delete(':id')
