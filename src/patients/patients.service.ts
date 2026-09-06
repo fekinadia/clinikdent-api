@@ -1,11 +1,20 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
 import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
 
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
+}
+
 @Injectable()
 export class PatientsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLog: AuditLogService,
+  ) {}
 
   async create(cabinetId: number, userId: number, dto: CreatePatientDto) {
     await this.assertSousLaLimite(cabinetId);
@@ -186,11 +195,11 @@ export class PatientsService {
     return patient;
   }
 
-  async update(cabinetId: number, id: number, dto: UpdatePatientDto) {
+  async update(cabinetId: number, id: number, dto: UpdatePatientDto, actor?: ActorContext) {
     await this.findOne(cabinetId, id); // vérifier l'accès
 
     try {
-      return await this.prisma.patient.update({
+      const updated = await this.prisma.patient.update({
         where: { id },
         data: {
           ...dto,
@@ -200,6 +209,22 @@ export class PatientsService {
           estProspect: false,
         },
       });
+
+      await this.auditLog.log({
+        userId: actor?.userId,
+        cabinetId,
+        action: 'patient.update',
+        entityType: 'Patient',
+        entityId: id,
+        // On journalise uniquement la liste des champs modifiés, jamais leur
+        // contenu (données médicales/personnelles) — voir audit du
+        // 2026-09-05, section 8 ("ne pas journaliser d'information médicale
+        // inutilement").
+        details: { fieldsChanged: Object.keys(dto) },
+        ipAddress: actor?.ipAddress,
+      });
+
+      return updated;
     } catch (e: any) {
       if (e.code === 'P2002') {
         throw new ConflictException(this.messageConflitUnicite(e));
@@ -208,9 +233,20 @@ export class PatientsService {
     }
   }
 
-  async delete(cabinetId: number, id: number) {
-    await this.findOne(cabinetId, id);
+  async delete(cabinetId: number, id: number, actor?: ActorContext) {
+    const patient = await this.findOne(cabinetId, id);
     await this.prisma.patient.delete({ where: { id } });
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'patient.delete',
+      entityType: 'Patient',
+      entityId: id,
+      details: { numeroDossier: patient.numeroDossier },
+      ipAddress: actor?.ipAddress,
+    });
+
     return { success: true };
   }
 

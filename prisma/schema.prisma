@@ -530,6 +530,10 @@ model StockMovement {
 model AuditLog {
   id          Int      @id @default(autoincrement())
   userId      Int?     @map("user_id")
+  // Ajouté le 2026-09-05 (chantier RBAC/sécurité) : colonne simple, sans
+  // relation Prisma vers Cabinet, pour que l'entrée reste consultable même
+  // après suppression du cabinet (ex. action "cabinet.delete" elle-même).
+  cabinetId   Int?     @map("cabinet_id")
   action      String   @db.VarChar(50)
   entityType  String?  @map("entity_type") @db.VarChar(50)
   entityId    Int?     @map("entity_id")
@@ -540,6 +544,7 @@ model AuditLog {
   user  User? @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([cabinetId])
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_log")

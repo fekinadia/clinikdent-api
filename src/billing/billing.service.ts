@@ -5,15 +5,22 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import { PLAN_LIMITS, PlanKey, isValidPlan } from './plan-limits';
 
 const KONNECT_BASE_URL = 'https://api.konnect.network/api/v2';
+
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
+}
 
 @Injectable()
 export class BillingService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private auditLog: AuditLogService,
   ) {}
 
   async getStatus(cabinetId: number) {
@@ -57,7 +64,7 @@ export class BillingService {
     };
   }
 
-  async createCheckout(cabinetId: number, plan: PlanKey) {
+  async createCheckout(cabinetId: number, plan: PlanKey, actor?: ActorContext) {
     const cabinet = await this.prisma.cabinet.findUnique({
       where: { id: cabinetId },
     });
@@ -121,6 +128,16 @@ export class BillingService {
       data: { paymentRef: data.paymentRef },
     });
 
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'subscription.checkout_initiated',
+      entityType: 'SubscriptionPayment',
+      entityId: payment.id,
+      details: { plan },
+      ipAddress: actor?.ipAddress,
+    });
+
     return { payUrl: data.payUrl, paymentRef: data.paymentRef };
   }
 
@@ -173,6 +190,17 @@ export class BillingService {
           },
         }),
       ]);
+
+      // Événement système : appelé par Konnect en serveur-à-serveur, donc
+      // pas d'utilisateur ni d'IP navigateur pertinente à journaliser ici.
+      await this.auditLog.log({
+        userId: null,
+        cabinetId: payment.cabinetId,
+        action: 'subscription.activated',
+        entityType: 'SubscriptionPayment',
+        entityId: payment.id,
+        details: { plan: payment.plan, paymentRef },
+      });
     }
 
     return { ok: true };

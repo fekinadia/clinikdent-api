@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { AutomationSettingsService } from './automation-settings.service';
 import { UpdateAutomationSettingsDto } from './dto/automation-settings.dto';
@@ -21,8 +22,12 @@ export class AutomationSettingsController {
     return this.automationSettingsService.get(user.cabinetId);
   }
 
+  // Configuration à l'échelle du cabinet (délais de rappel, activation
+  // no-show/recall) — réservée aux administrateurs, voir la matrice
+  // d'autorisation de l'audit du 2026-09-05.
   @Patch()
-  @ApiOperation({ summary: "Modifier les réglages d'automatisation du cabinet" })
+  @Roles('admin')
+  @ApiOperation({ summary: "Modifier les réglages d'automatisation du cabinet (admin uniquement)" })
   update(@CurrentUser() user: CurrentUserType, @Body() dto: UpdateAutomationSettingsDto) {
     return this.automationSettingsService.update(user.cabinetId, dto);
   }
