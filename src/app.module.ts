@@ -10,6 +10,7 @@ import { AuditLogModule } from './audit/audit-log.module';
 import { PatientsModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { TreatmentsModule } from './treatments/treatments.module';
+import { ActsModule } from './acts/acts.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
 import { BillingModule } from './billing/billing.module';
 import { PatientImagesModule } from './patient-images/patient-images.module';
@@ -32,6 +33,7 @@ import { AdminModule } from './admin/admin.module';
     PatientsModule,
     AppointmentsModule,
     TreatmentsModule,
+    ActsModule,
     PrescriptionsModule,
     BillingModule,
     PatientImagesModule,

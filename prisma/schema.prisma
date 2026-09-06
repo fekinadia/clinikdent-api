@@ -220,14 +220,18 @@ model Appointment {
 // ============================================================
 
 model ActCatalog {
-  id           Int      @id @default(autoincrement())
-  cabinetId    Int      @map("cabinet_id")
-  code         String   @db.VarChar(20)
-  libelle      String   @db.VarChar(200)
-  coefficient  Decimal  @default(1) @db.Decimal(6, 2)
-  tarifBase    Decimal  @map("tarif_base") @db.Decimal(10, 3)
-  categorie    String?  @db.VarChar(50)
-  actif        Boolean  @default(true)
+  id            Int       @id @default(autoincrement())
+  cabinetId     Int       @map("cabinet_id")
+  code          String?   @db.VarChar(20)
+  libelle       String    @db.VarChar(200)
+  coefficient   Decimal   @default(1) @db.Decimal(6, 2)
+  tarifBase     Decimal   @map("tarif_base") @db.Decimal(10, 3)
+  categorie     String?   @db.VarChar(50)
+  description   String?   @db.Text
+  dureeMinutes  Int?      @map("duree_minutes")
+  actif         Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   cabinet       Cabinet        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   treatmentActs TreatmentAct[]
