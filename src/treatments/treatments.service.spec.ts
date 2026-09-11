@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { TreatmentsService } from './treatments.service';
 
 const CABINET_A = 1;
@@ -9,10 +9,13 @@ function makeService() {
     patient: { findUnique: jest.fn() },
     appointment: { findUnique: jest.fn() },
     actCatalog: { findMany: jest.fn() },
-    treatment: { create: jest.fn() },
+    treatment: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    treatmentAct: { update: jest.fn() },
+    $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
   } as any;
-  const service = new TreatmentsService(prisma);
-  return { service, prisma };
+  const auditLog = { log: jest.fn() } as any;
+  const service = new TreatmentsService(prisma, auditLog);
+  return { service, prisma, auditLog };
 }
 
 /**
@@ -91,5 +94,107 @@ describe('TreatmentsService — intégration avec le catalogue des actes', () =>
         }),
       }),
     );
+  });
+});
+
+/**
+ * Correction du prix d'un acte après coup (demande de Nadia, 2026-09-11 :
+ * aucune interface n'existait pour corriger une erreur de saisie sur le
+ * prix d'un soin déjà créé — le formulaire "Modifier" existant exclut
+ * volontairement coût/montant reçu/mode de règlement depuis le 2026-08-31,
+ * ce qui restait correct pour le paiement mais bloquait toute correction
+ * légitime du prix lui-même). Règle validée avec Nadia : la correction est
+ * refusée si elle ferait passer le prix sous le montant déjà encaissé.
+ */
+describe('TreatmentsService.update — correction de prix (cout)', () => {
+  function mockExistingTreatment(prisma: any, act: { id: number; libelle: string; cout: number; montantRecu: number }) {
+    const treatment = {
+      id: 1,
+      patient: { cabinetId: CABINET_A },
+      acts: [act],
+    };
+    prisma.treatment.findUnique.mockResolvedValueOnce(treatment); // lecture initiale
+    prisma.treatment.findUnique.mockResolvedValueOnce({ ...treatment }); // relecture finale
+    prisma.treatment.update.mockResolvedValue({ id: 1 });
+    prisma.treatmentAct.update.mockResolvedValue({ id: act.id });
+    return treatment;
+  }
+
+  it('accepte une correction de prix supérieure ou égale au montant déjà encaissé', async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage', cout: 110 }] } as any,
+      { userId: 7, ipAddress: '127.0.0.1' },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 42 },
+        data: expect.objectContaining({ cout: 110 }),
+      }),
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'treatment_act.cout_corrected',
+        entityType: 'TreatmentAct',
+        entityId: 42,
+        userId: 7,
+        details: expect.objectContaining({ ancienCout: 100, nouveauCout: 110 }),
+      }),
+    );
+  });
+
+  it('refuse une correction de prix inférieure au montant déjà encaissé (évite un "dû" négatif)', async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', cout: 80 }] } as any,
+        { userId: 7 },
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auditLog.log).not.toHaveBeenCalled();
+  });
+
+  it('accepte exactement le montant déjà encaissé comme nouveau prix (reste dû = 0, cas limite)', async () => {
+    const { service, prisma } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', cout: 90 }] } as any,
+        { userId: 7 },
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("ne journalise rien et n'envoie pas cout à Prisma si le prix n'est pas modifié (seuls libellé/dents changent)", async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage (bas)', dents: '36;37' }] } as any,
+      { userId: 7 },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { libelle: 'Détartrage (bas)', dents: '36;37' },
+      }),
+    );
+    expect(auditLog.log).not.toHaveBeenCalled();
   });
 });
