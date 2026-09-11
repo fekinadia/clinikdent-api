@@ -7,9 +7,11 @@ import {
   Patch,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { TreatmentsService } from './treatments.service';
@@ -34,13 +36,20 @@ export class TreatmentsController {
   }
 
   @Patch('treatments/:id')
-  @ApiOperation({ summary: "Modifier la date, les actes et les observations d'une séance de soins" })
+  @ApiOperation({
+    summary:
+      "Modifier la date, les actes (libellé, dents, prix) et les observations d'une séance de soins",
+  })
   update(
     @CurrentUser() user: CurrentUserType,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTreatmentDto,
+    @Req() req: Request,
   ) {
-    return this.treatmentsService.update(user.cabinetId, id, dto);
+    return this.treatmentsService.update(user.cabinetId, id, dto, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
   }
 
   @Get('patients/:patientId/treatments')
