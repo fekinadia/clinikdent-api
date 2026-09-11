@@ -108,6 +108,19 @@ export class UpdateTreatmentActDto {
   @IsNumber()
   @Min(0)
   cout?: number;
+
+  // Correction du montant déjà encaissé sur un acte (ex : erreur de saisie
+  // lors d'un encaissement précédent). Volontairement distinct du flux
+  // "Encaisser" (RecordPaymentDto), qui ne fait qu'ajouter un nouveau
+  // paiement et ne peut jamais faire baisser le montant reçu. Le service
+  // refuse toute valeur qui ferait apparaître un prix inférieur au montant
+  // reçu, ou un montant reçu supérieur au prix moins la remise (voir
+  // TreatmentsService.update).
+  @ApiPropertyOptional({ example: 90, description: 'Montant encaissé corrigé (DT)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  montantRecu?: number;
 }
 
 export class UpdateTreatmentDto {
