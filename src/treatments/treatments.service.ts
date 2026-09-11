@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import {
   CreateTreatmentDto,
   RecordPaymentDto,
@@ -7,9 +8,31 @@ import {
   UpdateTreatmentDto,
 } from './dto/treatment.dto';
 
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
+}
+
+// Champs de TreatmentAct réellement lus dans update() ci-dessous. Typé
+// explicitement (plutôt que de compter sur l'inférence via le Prisma
+// Client généré) car ce fichier peut être compilé/testé dans un
+// environnement où `prisma generate` n'a pas pu télécharger le moteur
+// (voir audit du 2026-09-05) — le typage réel de Prisma reste identique
+// en production, ceci ne fait qu'éviter une dépendance au client généré
+// pour la vérification de types de cette seule méthode.
+interface ExistingTreatmentAct {
+  id: number;
+  libelle: string;
+  cout: unknown;
+  montantRecu: unknown;
+}
+
 @Injectable()
 export class TreatmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLog: AuditLogService,
+  ) {}
 
   async create(cabinetId: number, userId: number, dto: CreateTreatmentDto) {
     // Vérifier que le patient appartient au cabinet
@@ -72,7 +95,12 @@ export class TreatmentsService {
     });
   }
 
-  async update(cabinetId: number, treatmentId: number, dto: UpdateTreatmentDto) {
+  async update(
+    cabinetId: number,
+    treatmentId: number,
+    dto: UpdateTreatmentDto,
+    actor?: ActorContext,
+  ) {
     const treatment = await this.prisma.treatment.findUnique({
       where: { id: treatmentId },
       include: { patient: true, acts: true },
@@ -81,11 +109,42 @@ export class TreatmentsService {
       throw new ForbiddenException();
     }
 
+    const actsById = new Map<number, ExistingTreatmentAct>(
+      treatment.acts.map((a: ExistingTreatmentAct) => [a.id, a]),
+    );
+
     if (dto.acts) {
-      const validIds = new Set(treatment.acts.map((a) => a.id));
-      const invalid = dto.acts.some((a) => !validIds.has(a.id));
+      const invalid = dto.acts.some((a) => !actsById.has(a.id));
       if (invalid) {
         throw new ForbiddenException('Acte invalide');
+      }
+    }
+
+    // Correction de prix (cout) : refusée si elle ferait passer le "reste
+    // dû" sous zéro par rapport à ce qui est déjà réellement encaissé —
+    // on ne veut jamais afficher un trop-perçu comme si c'était un dû
+    // négatif ailleurs dans l'app (Facturation, Statistiques). Si le
+    // cabinet a vraiment besoin de baisser un prix sous le montant déjà
+    // encaissé, il doit d'abord ajuster l'encaissement.
+    const costCorrections: { actId: number; libelle: string; ancienCout: number; nouveauCout: number }[] = [];
+    for (const a of dto.acts ?? []) {
+      if (a.cout === undefined) continue;
+      const existing = actsById.get(a.id)!;
+      const dejaRecu = Number(existing.montantRecu);
+      if (a.cout < dejaRecu - 0.01) {
+        throw new BadRequestException(
+          `Le nouveau prix (${a.cout.toFixed(2)} DT) est inférieur au montant déjà encaissé ` +
+            `(${dejaRecu.toFixed(2)} DT) pour l'acte "${existing.libelle}". ` +
+            `Ajustez d'abord le paiement avant de baisser ce prix.`,
+        );
+      }
+      if (a.cout !== Number(existing.cout)) {
+        costCorrections.push({
+          actId: a.id,
+          libelle: existing.libelle,
+          ancienCout: Number(existing.cout),
+          nouveauCout: a.cout,
+        });
       }
     }
 
@@ -100,10 +159,35 @@ export class TreatmentsService {
       ...(dto.acts ?? []).map((a) =>
         this.prisma.treatmentAct.update({
           where: { id: a.id },
-          data: { libelle: a.libelle, dents: a.dents },
+          data: {
+            libelle: a.libelle,
+            dents: a.dents,
+            ...(a.cout !== undefined ? { cout: a.cout } : {}),
+          },
         }),
       ),
     ]);
+
+    // Journalisé séparément de la mise à jour générique de la séance :
+    // c'est une correction financière sensible (impacte le "dû" affiché
+    // au patient), contrairement au renommage d'un libellé ou à une
+    // correction des dents concernées.
+    for (const c of costCorrections) {
+      await this.auditLog.log({
+        userId: actor?.userId,
+        cabinetId,
+        action: 'treatment_act.cout_corrected',
+        entityType: 'TreatmentAct',
+        entityId: c.actId,
+        details: {
+          treatmentId,
+          libelle: c.libelle,
+          ancienCout: c.ancienCout,
+          nouveauCout: c.nouveauCout,
+        },
+        ipAddress: actor?.ipAddress,
+      });
+    }
 
     return this.prisma.treatment.findUnique({
       where: { id: treatmentId },
