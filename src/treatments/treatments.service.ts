@@ -25,6 +25,7 @@ interface ExistingTreatmentAct {
   libelle: string;
   cout: unknown;
   montantRecu: unknown;
+  remise: unknown;
 }
 
 @Injectable()
@@ -120,30 +121,54 @@ export class TreatmentsService {
       }
     }
 
-    // Correction de prix (cout) : refusée si elle ferait passer le "reste
-    // dû" sous zéro par rapport à ce qui est déjà réellement encaissé —
-    // on ne veut jamais afficher un trop-perçu comme si c'était un dû
-    // négatif ailleurs dans l'app (Facturation, Statistiques). Si le
-    // cabinet a vraiment besoin de baisser un prix sous le montant déjà
-    // encaissé, il doit d'abord ajuster l'encaissement.
+    // Correction de prix (cout) et/ou du montant déjà encaissé (montantRecu) :
+    // les deux règles ci-dessous s'appliquent sur les valeurs FINALES (après
+    // correction), pas sur les anciennes, pour que corriger les deux à la
+    // fois dans la même requête fonctionne correctement.
+    // 1. Le prix ne peut jamais passer sous le montant encaissé (sinon un
+    //    "reste dû" négatif apparaîtrait ailleurs dans l'app — Facturation,
+    //    Statistiques).
+    // 2. Le montant encaissé ne peut jamais dépasser le prix moins la
+    //    remise (sinon un trop-perçu apparaîtrait comme un dû négatif).
+    // Si le cabinet a vraiment besoin d'aller au-delà, il doit d'abord
+    // ajuster l'autre valeur.
     const costCorrections: { actId: number; libelle: string; ancienCout: number; nouveauCout: number }[] = [];
+    const receivedCorrections: { actId: number; libelle: string; ancienMontant: number; nouveauMontant: number }[] = [];
     for (const a of dto.acts ?? []) {
-      if (a.cout === undefined) continue;
+      if (a.cout === undefined && a.montantRecu === undefined) continue;
       const existing = actsById.get(a.id)!;
-      const dejaRecu = Number(existing.montantRecu);
-      if (a.cout < dejaRecu - 0.01) {
+      const remise = Number(existing.remise ?? 0);
+      const nouveauCout = a.cout !== undefined ? a.cout : Number(existing.cout);
+      const nouveauMontantRecu = a.montantRecu !== undefined ? a.montantRecu : Number(existing.montantRecu);
+
+      if (nouveauCout < nouveauMontantRecu - 0.01) {
         throw new BadRequestException(
-          `Le nouveau prix (${a.cout.toFixed(2)} DT) est inférieur au montant déjà encaissé ` +
-            `(${dejaRecu.toFixed(2)} DT) pour l'acte "${existing.libelle}". ` +
-            `Ajustez d'abord le paiement avant de baisser ce prix.`,
+          `Le prix (${nouveauCout.toFixed(2)} DT) est inférieur au montant encaissé ` +
+            `(${nouveauMontantRecu.toFixed(2)} DT) pour l'acte "${existing.libelle}". ` +
+            `Ajustez d'abord le montant encaissé avant de baisser ce prix.`,
         );
       }
-      if (a.cout !== Number(existing.cout)) {
+      if (nouveauMontantRecu > nouveauCout - remise + 0.01) {
+        throw new BadRequestException(
+          `Le montant encaissé corrigé (${nouveauMontantRecu.toFixed(2)} DT) dépasse le prix de l'acte ` +
+            `${remise > 0 ? 'moins la remise ' : ''}(${(nouveauCout - remise).toFixed(2)} DT) pour l'acte "${existing.libelle}".`,
+        );
+      }
+
+      if (a.cout !== undefined && a.cout !== Number(existing.cout)) {
         costCorrections.push({
           actId: a.id,
           libelle: existing.libelle,
           ancienCout: Number(existing.cout),
           nouveauCout: a.cout,
+        });
+      }
+      if (a.montantRecu !== undefined && a.montantRecu !== Number(existing.montantRecu)) {
+        receivedCorrections.push({
+          actId: a.id,
+          libelle: existing.libelle,
+          ancienMontant: Number(existing.montantRecu),
+          nouveauMontant: a.montantRecu,
         });
       }
     }
@@ -163,15 +188,16 @@ export class TreatmentsService {
             libelle: a.libelle,
             dents: a.dents,
             ...(a.cout !== undefined ? { cout: a.cout } : {}),
+            ...(a.montantRecu !== undefined ? { montantRecu: a.montantRecu } : {}),
           },
         }),
       ),
     ]);
 
     // Journalisé séparément de la mise à jour générique de la séance :
-    // c'est une correction financière sensible (impacte le "dû" affiché
-    // au patient), contrairement au renommage d'un libellé ou à une
-    // correction des dents concernées.
+    // ce sont des corrections financières sensibles (impactent le "dû"
+    // affiché au patient), contrairement au renommage d'un libellé ou à
+    // une correction des dents concernées.
     for (const c of costCorrections) {
       await this.auditLog.log({
         userId: actor?.userId,
@@ -184,6 +210,22 @@ export class TreatmentsService {
           libelle: c.libelle,
           ancienCout: c.ancienCout,
           nouveauCout: c.nouveauCout,
+        },
+        ipAddress: actor?.ipAddress,
+      });
+    }
+    for (const c of receivedCorrections) {
+      await this.auditLog.log({
+        userId: actor?.userId,
+        cabinetId,
+        action: 'treatment_act.montant_recu_corrected',
+        entityType: 'TreatmentAct',
+        entityId: c.actId,
+        details: {
+          treatmentId,
+          libelle: c.libelle,
+          ancienMontant: c.ancienMontant,
+          nouveauMontant: c.nouveauMontant,
         },
         ipAddress: actor?.ipAddress,
       });
