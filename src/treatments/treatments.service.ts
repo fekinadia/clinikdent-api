@@ -1,378 +1,304 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuditLogService } from '../audit/audit-log.service';
-import {
-  CreateTreatmentDto,
-  RecordPaymentDto,
-  UpdateToothStateDto,
-  UpdateTreatmentDto,
-} from './dto/treatment.dto';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { TreatmentsService } from './treatments.service';
 
-export interface ActorContext {
-  userId: number;
-  ipAddress?: string | null;
+const CABINET_A = 1;
+const CABINET_B = 2;
+
+function makeService() {
+  const prisma = {
+    patient: { findUnique: jest.fn() },
+    appointment: { findUnique: jest.fn() },
+    actCatalog: { findMany: jest.fn() },
+    treatment: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    treatmentAct: { update: jest.fn() },
+    $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+  } as any;
+  const auditLog = { log: jest.fn() } as any;
+  const service = new TreatmentsService(prisma, auditLog);
+  return { service, prisma, auditLog };
 }
 
-// Champs de TreatmentAct réellement lus dans update() ci-dessous. Typé
-// explicitement (plutôt que de compter sur l'inférence via le Prisma
-// Client généré) car ce fichier peut être compilé/testé dans un
-// environnement où `prisma generate` n'a pas pu télécharger le moteur
-// (voir audit du 2026-09-05) — le typage réel de Prisma reste identique
-// en production, ceci ne fait qu'éviter une dépendance au client généré
-// pour la vérification de types de cette seule méthode.
-interface ExistingTreatmentAct {
-  id: number;
-  libelle: string;
-  cout: unknown;
-  montantRecu: unknown;
-  remise: unknown;
-}
+/**
+ * Intégration catalogue <-> soins (STEP 3, point 5) : TreatmentAct.acteId
+ * et sa validation de cabinet existaient déjà avant STEP 3 — ces tests
+ * confirment le comportement, pas une nouvelle implémentation, en
+ * particulier la règle "le catalogue ne fournit qu'un prix par défaut,
+ * jamais une référence vivante" (point 4/5 du plan validé).
+ */
+describe('TreatmentsService — intégration avec le catalogue des actes', () => {
+  it('crée un soin en référençant un acte actif du catalogue du même cabinet, en gardant le prix saisi par le clinicien', async () => {
+    const { service, prisma } = makeService();
+    prisma.patient.findUnique.mockResolvedValue({ id: 5, cabinetId: CABINET_A });
+    prisma.actCatalog.findMany.mockResolvedValue([
+      { id: 10, cabinetId: CABINET_A, libelle: 'Détartrage', tarifBase: 90 },
+    ]);
+    prisma.treatment.create.mockResolvedValue({ id: 1 });
 
-@Injectable()
-export class TreatmentsService {
-  constructor(
-    private prisma: PrismaService,
-    private auditLog: AuditLogService,
-  ) {}
+    await service.create(CABINET_A, 7, {
+      patientId: 5,
+      dateSoin: '2026-09-05',
+      // Le clinicien a modifié le prix par rapport au tarif par défaut
+      // du catalogue (90) — le catalogue ne fournit qu'une suggestion.
+      acts: [{ acteId: 10, libelle: 'Détartrage', cout: 75 }],
+    } as any);
 
-  async create(cabinetId: number, userId: number, dto: CreateTreatmentDto) {
-    // Vérifier que le patient appartient au cabinet
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: dto.patientId },
-    });
-    if (!patient || patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException('Patient invalide');
-    }
-
-    // Si le soin est rattaché à un rendez-vous, vérifier qu'il appartient
-    // bien au même patient (donc au même cabinet).
-    if (dto.appointmentId) {
-      const appointment = await this.prisma.appointment.findUnique({
-        where: { id: dto.appointmentId },
-      });
-      if (!appointment || appointment.patientId !== dto.patientId) {
-        throw new ForbiddenException('Rendez-vous invalide');
-      }
-    }
-
-    // Vérifier que les actes référencés au catalogue appartiennent au cabinet
-    const acteIds = dto.acts
-      .map((a) => a.acteId)
-      .filter((id): id is number => !!id);
-    if (acteIds.length > 0) {
-      const actes = await this.prisma.actCatalog.findMany({
-        where: { id: { in: acteIds } },
-      });
-      const uniqueIds = new Set(acteIds);
-      const invalide =
-        actes.length !== uniqueIds.size ||
-        actes.some((a) => a.cabinetId !== cabinetId);
-      if (invalide) {
-        throw new ForbiddenException('Acte du catalogue invalide');
-      }
-    }
-
-    return this.prisma.treatment.create({
-      data: {
-        patientId: dto.patientId,
-        appointmentId: dto.appointmentId,
-        dateSoin: new Date(dto.dateSoin),
-        observations: dto.observations,
-        medecinId: userId,
-        acts: {
-          create: dto.acts.map((a) => ({
-            acteId: a.acteId,
-            libelle: a.libelle,
-            dents: a.dents,
-            cout: a.cout,
-            montantRecu: a.montantRecu || 0,
-            remise: a.remise || 0,
-            modeReglement: a.modeReglement,
-            typeSoin: a.typeSoin || 'realise',
-          })),
-        },
-      },
-      include: { acts: true, patient: true },
-    });
-  }
-
-  async update(
-    cabinetId: number,
-    treatmentId: number,
-    dto: UpdateTreatmentDto,
-    actor?: ActorContext,
-  ) {
-    const treatment = await this.prisma.treatment.findUnique({
-      where: { id: treatmentId },
-      include: { patient: true, acts: true },
-    });
-    if (!treatment || treatment.patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException();
-    }
-
-    const actsById = new Map<number, ExistingTreatmentAct>(
-      treatment.acts.map((a: ExistingTreatmentAct) => [a.id, a]),
-    );
-
-    if (dto.acts) {
-      const invalid = dto.acts.some((a) => !actsById.has(a.id));
-      if (invalid) {
-        throw new ForbiddenException('Acte invalide');
-      }
-    }
-
-    // Correction de prix (cout) et/ou du montant déjà encaissé (montantRecu) :
-    // les deux règles ci-dessous s'appliquent sur les valeurs FINALES (après
-    // correction), pas sur les anciennes, pour que corriger les deux à la
-    // fois dans la même requête fonctionne correctement.
-    // 1. Le prix ne peut jamais passer sous le montant encaissé (sinon un
-    //    "reste dû" négatif apparaîtrait ailleurs dans l'app — Facturation,
-    //    Statistiques).
-    // 2. Le montant encaissé ne peut jamais dépasser le prix moins la
-    //    remise (sinon un trop-perçu apparaîtrait comme un dû négatif).
-    // Si le cabinet a vraiment besoin d'aller au-delà, il doit d'abord
-    // ajuster l'autre valeur.
-    const costCorrections: { actId: number; libelle: string; ancienCout: number; nouveauCout: number }[] = [];
-    const receivedCorrections: { actId: number; libelle: string; ancienMontant: number; nouveauMontant: number }[] = [];
-    for (const a of dto.acts ?? []) {
-      if (a.cout === undefined && a.montantRecu === undefined) continue;
-      const existing = actsById.get(a.id)!;
-      const remise = Number(existing.remise ?? 0);
-      const nouveauCout = a.cout !== undefined ? a.cout : Number(existing.cout);
-      const nouveauMontantRecu = a.montantRecu !== undefined ? a.montantRecu : Number(existing.montantRecu);
-
-      if (nouveauCout < nouveauMontantRecu - 0.01) {
-        throw new BadRequestException(
-          `Le prix (${nouveauCout.toFixed(2)} DT) est inférieur au montant encaissé ` +
-            `(${nouveauMontantRecu.toFixed(2)} DT) pour l'acte "${existing.libelle}". ` +
-            `Ajustez d'abord le montant encaissé avant de baisser ce prix.`,
-        );
-      }
-      if (nouveauMontantRecu > nouveauCout - remise + 0.01) {
-        throw new BadRequestException(
-          `Le montant encaissé corrigé (${nouveauMontantRecu.toFixed(2)} DT) dépasse le prix de l'acte ` +
-            `${remise > 0 ? 'moins la remise ' : ''}(${(nouveauCout - remise).toFixed(2)} DT) pour l'acte "${existing.libelle}".`,
-        );
-      }
-
-      if (a.cout !== undefined && a.cout !== Number(existing.cout)) {
-        costCorrections.push({
-          actId: a.id,
-          libelle: existing.libelle,
-          ancienCout: Number(existing.cout),
-          nouveauCout: a.cout,
-        });
-      }
-      if (a.montantRecu !== undefined && a.montantRecu !== Number(existing.montantRecu)) {
-        receivedCorrections.push({
-          actId: a.id,
-          libelle: existing.libelle,
-          ancienMontant: Number(existing.montantRecu),
-          nouveauMontant: a.montantRecu,
-        });
-      }
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.treatment.update({
-        where: { id: treatmentId },
-        data: {
-          ...(dto.dateSoin ? { dateSoin: new Date(dto.dateSoin) } : {}),
-          ...(dto.observations !== undefined ? { observations: dto.observations } : {}),
-        },
-      }),
-      ...(dto.acts ?? []).map((a) =>
-        this.prisma.treatmentAct.update({
-          where: { id: a.id },
-          data: {
-            libelle: a.libelle,
-            dents: a.dents,
-            ...(a.cout !== undefined ? { cout: a.cout } : {}),
-            ...(a.montantRecu !== undefined ? { montantRecu: a.montantRecu } : {}),
+    expect(prisma.treatment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          acts: {
+            create: [
+              expect.objectContaining({ acteId: 10, libelle: 'Détartrage', cout: 75 }),
+            ],
           },
         }),
-      ),
+      }),
+    );
+  });
+
+  it("rejette un acteId appartenant à un autre cabinet", async () => {
+    const { service, prisma } = makeService();
+    prisma.patient.findUnique.mockResolvedValue({ id: 5, cabinetId: CABINET_A });
+    prisma.actCatalog.findMany.mockResolvedValue([
+      { id: 10, cabinetId: CABINET_B, libelle: 'Détartrage', tarifBase: 90 },
     ]);
 
-    // Journalisé séparément de la mise à jour générique de la séance :
-    // ce sont des corrections financières sensibles (impactent le "dû"
-    // affiché au patient), contrairement au renommage d'un libellé ou à
-    // une correction des dents concernées.
-    for (const c of costCorrections) {
-      await this.auditLog.log({
-        userId: actor?.userId,
-        cabinetId,
+    await expect(
+      service.create(CABINET_A, 7, {
+        patientId: 5,
+        dateSoin: '2026-09-05',
+        acts: [{ acteId: 10, libelle: 'Détartrage', cout: 90 }],
+      } as any),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.treatment.create).not.toHaveBeenCalled();
+  });
+
+  it('crée un soin sans acteId (compatibilité historique, catalogue non utilisé)', async () => {
+    const { service, prisma } = makeService();
+    prisma.patient.findUnique.mockResolvedValue({ id: 5, cabinetId: CABINET_A });
+    prisma.treatment.create.mockResolvedValue({ id: 2 });
+
+    await service.create(CABINET_A, 7, {
+      patientId: 5,
+      dateSoin: '2026-09-05',
+      acts: [{ libelle: 'Consultation libre', cout: 30 }],
+    } as any);
+
+    // Aucun acteId fourni : le catalogue n'est même pas consulté.
+    expect(prisma.actCatalog.findMany).not.toHaveBeenCalled();
+    expect(prisma.treatment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          acts: {
+            create: [expect.objectContaining({ acteId: undefined, libelle: 'Consultation libre', cout: 30 })],
+          },
+        }),
+      }),
+    );
+  });
+});
+
+/**
+ * Correction du prix d'un acte après coup (demande de Nadia, 2026-09-11 :
+ * aucune interface n'existait pour corriger une erreur de saisie sur le
+ * prix d'un soin déjà créé — le formulaire "Modifier" existant exclut
+ * volontairement coût/montant reçu/mode de règlement depuis le 2026-08-31,
+ * ce qui restait correct pour le paiement mais bloquait toute correction
+ * légitime du prix lui-même). Règle validée avec Nadia : la correction est
+ * refusée si elle ferait passer le prix sous le montant déjà encaissé.
+ */
+describe('TreatmentsService.update — correction de prix (cout)', () => {
+  function mockExistingTreatment(prisma: any, act: { id: number; libelle: string; cout: number; montantRecu: number }) {
+    const treatment = {
+      id: 1,
+      patient: { cabinetId: CABINET_A },
+      acts: [act],
+    };
+    prisma.treatment.findUnique.mockResolvedValueOnce(treatment); // lecture initiale
+    prisma.treatment.findUnique.mockResolvedValueOnce({ ...treatment }); // relecture finale
+    prisma.treatment.update.mockResolvedValue({ id: 1 });
+    prisma.treatmentAct.update.mockResolvedValue({ id: act.id });
+    return treatment;
+  }
+
+  it('accepte une correction de prix supérieure ou égale au montant déjà encaissé', async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage', cout: 110 }] } as any,
+      { userId: 7, ipAddress: '127.0.0.1' },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 42 },
+        data: expect.objectContaining({ cout: 110 }),
+      }),
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
         action: 'treatment_act.cout_corrected',
         entityType: 'TreatmentAct',
-        entityId: c.actId,
-        details: {
-          treatmentId,
-          libelle: c.libelle,
-          ancienCout: c.ancienCout,
-          nouveauCout: c.nouveauCout,
-        },
-        ipAddress: actor?.ipAddress,
-      });
-    }
-    for (const c of receivedCorrections) {
-      await this.auditLog.log({
-        userId: actor?.userId,
-        cabinetId,
+        entityId: 42,
+        userId: 7,
+        details: expect.objectContaining({ ancienCout: 100, nouveauCout: 110 }),
+      }),
+    );
+  });
+
+  it('refuse une correction de prix inférieure au montant déjà encaissé (évite un "dû" négatif)', async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', cout: 80 }] } as any,
+        { userId: 7 },
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auditLog.log).not.toHaveBeenCalled();
+  });
+
+  it('accepte exactement le montant déjà encaissé comme nouveau prix (reste dû = 0, cas limite)', async () => {
+    const { service, prisma } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', cout: 90 }] } as any,
+        { userId: 7 },
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("ne journalise rien et n'envoie pas cout à Prisma si le prix n'est pas modifié (seuls libellé/dents changent)", async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 });
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage (bas)', dents: '36;37' }] } as any,
+      { userId: 7 },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { libelle: 'Détartrage (bas)', dents: '36;37' },
+      }),
+    );
+    expect(auditLog.log).not.toHaveBeenCalled();
+  });
+
+  it('accepte une correction du montant encaissé (à la baisse comme à la hausse)', async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 } as any);
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage', montantRecu: 40 }] } as any,
+      { userId: 7 },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ montantRecu: 40 }),
+      }),
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
         action: 'treatment_act.montant_recu_corrected',
         entityType: 'TreatmentAct',
-        entityId: c.actId,
-        details: {
-          treatmentId,
-          libelle: c.libelle,
-          ancienMontant: c.ancienMontant,
-          nouveauMontant: c.nouveauMontant,
-        },
-        ipAddress: actor?.ipAddress,
-      });
-    }
-
-    return this.prisma.treatment.findUnique({
-      where: { id: treatmentId },
-      include: { acts: true },
-    });
-  }
-
-  async findByPatient(cabinetId: number, patientId: number) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: patientId },
-    });
-    if (!patient || patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException();
-    }
-
-    return this.prisma.treatment.findMany({
-      where: { patientId },
-      orderBy: { dateSoin: 'desc' },
-      include: { acts: true, medecin: { select: { nom: true, prenom: true } } },
-    });
-  }
-
-  async getFinancialSummary(cabinetId: number, patientId: number) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: patientId },
-    });
-    if (!patient || patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException();
-    }
-
-    const result = await this.prisma.treatmentAct.aggregate({
-      where: {
-        treatment: { patientId },
-        typeSoin: 'realise',
-      },
-      _sum: {
-        cout: true,
-        montantRecu: true,
-        remise: true,
-      },
-    });
-
-    const total = Number(result._sum.cout || 0);
-    const recu = Number(result._sum.montantRecu || 0);
-    const remise = Number(result._sum.remise || 0);
-    const reste = total - recu - remise;
-
-    return { total, recu, remise, reste };
-  }
-
-  async recordPayment(
-    cabinetId: number,
-    userId: number,
-    actId: number,
-    dto: RecordPaymentDto,
-  ) {
-    const act = await this.prisma.treatmentAct.findUnique({
-      where: { id: actId },
-      include: { treatment: { include: { patient: true } } },
-    });
-    if (!act || act.treatment.patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException('Acte invalide');
-    }
-
-    const cout = Number(act.cout);
-    const remise = Number(act.remise);
-    const dejaRecu = Number(act.montantRecu);
-    const reste = cout - remise - dejaRecu;
-
-    if (dto.montant > reste + 0.01) {
-      throw new BadRequestException(
-        `Le montant dépasse le solde dû (${reste.toFixed(2)} DT)`,
-      );
-    }
-
-    const modeReglement = dto.modeReglement || act.modeReglement || 'especes';
-
-    const [updatedAct] = await this.prisma.$transaction([
-      this.prisma.treatmentAct.update({
-        where: { id: actId },
-        data: { montantRecu: { increment: dto.montant }, modeReglement },
+        entityId: 42,
+        details: expect.objectContaining({ ancienMontant: 90, nouveauMontant: 40 }),
       }),
-      this.prisma.payment.create({
-        data: {
-          patientId: act.treatment.patientId,
-          treatmentActId: actId,
-          montant: dto.montant,
-          modeReglement,
-          remarque: dto.remarque,
-          createdById: userId,
-        },
+    );
+  });
+
+  it("refuse un montant encaissé corrigé supérieur au prix de l'acte (évite un trop-perçu)", async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 } as any);
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', montantRecu: 150 }] } as any,
+        { userId: 7 },
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auditLog.log).not.toHaveBeenCalled();
+  });
+
+  it("refuse un montant encaissé corrigé supérieur au prix moins la remise", async () => {
+    const { service, prisma } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 80, remise: 10 } as any);
+
+    await expect(
+      service.update(
+        CABINET_A,
+        1,
+        { acts: [{ id: 42, libelle: 'Détartrage', montantRecu: 95 }] } as any,
+        { userId: 7 },
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('permet de corriger le prix et le montant encaissé en même temps, en validant les valeurs finales', async () => {
+    const { service, prisma, auditLog } = makeService();
+    // Avant correction : cout=100, montantRecu=90 (donc un cout<90 seul aurait été refusé
+    // par l'ancienne logique) — ici on baisse les deux ensemble à 60 et 60, ce qui doit être accepté
+    // car la comparaison se fait sur les valeurs finales, pas sur l'ancien montantRecu.
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 } as any);
+
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage', cout: 60, montantRecu: 60 }] } as any,
+      { userId: 7 },
+    );
+
+    expect(prisma.treatmentAct.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ cout: 60, montantRecu: 60 }),
       }),
-    ]);
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'treatment_act.cout_corrected',
+        details: expect.objectContaining({ ancienCout: 100, nouveauCout: 60 }),
+      }),
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'treatment_act.montant_recu_corrected',
+        details: expect.objectContaining({ ancienMontant: 90, nouveauMontant: 60 }),
+      }),
+    );
+  });
 
-    return updatedAct;
-  }
+  it("ne journalise pas de correction de montant encaissé si la valeur envoyée est identique à l'existante", async () => {
+    const { service, prisma, auditLog } = makeService();
+    mockExistingTreatment(prisma, { id: 42, libelle: 'Détartrage', cout: 100, montantRecu: 90 } as any);
 
-  // ==== SCHÉMA DENTAIRE ====
+    await service.update(
+      CABINET_A,
+      1,
+      { acts: [{ id: 42, libelle: 'Détartrage', montantRecu: 90 }] } as any,
+      { userId: 7 },
+    );
 
-  async getToothChart(cabinetId: number, patientId: number) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: patientId },
-    });
-    if (!patient || patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException();
-    }
-
-    return this.prisma.toothState.findMany({
-      where: { patientId },
-      orderBy: { dentNumero: 'asc' },
-    });
-  }
-
-  async upsertToothState(
-    cabinetId: number,
-    userId: number,
-    patientId: number,
-    dto: UpdateToothStateDto,
-  ) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: patientId },
-    });
-    if (!patient || patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException();
-    }
-
-    return this.prisma.toothState.upsert({
-      where: {
-        patientId_dentNumero: { patientId, dentNumero: dto.dentNumero },
-      },
-      update: {
-        etat: dto.etat,
-        notes: dto.notes,
-        modifiedById: userId,
-        dateModif: new Date(),
-      },
-      create: {
-        patientId,
-        dentNumero: dto.dentNumero,
-        etat: dto.etat,
-        notes: dto.notes,
-        modifiedById: userId,
-      },
-    });
-  }
-}
+    expect(auditLog.log).not.toHaveBeenCalled();
+  });
+});
