@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -95,6 +96,31 @@ export class UpdateTreatmentActDto {
   @IsOptional()
   @IsString()
   dents?: string;
+
+  // Correction du prix d'un acte après coup (ex : erreur de saisie).
+  // Volontairement distinct de la logique d'encaissement (RecordPaymentDto) :
+  // ceci corrige le tarif de l'acte, pas le montant réellement encaissé.
+  // Le service refuse toute valeur inférieure au montant déjà encaissé
+  // (voir TreatmentsService.update) pour ne jamais faire apparaître un
+  // "reste dû" négatif.
+  @ApiPropertyOptional({ example: 100, description: "Prix corrigé de l'acte (DT)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  cout?: number;
+
+  // Correction du montant déjà encaissé sur un acte (ex : erreur de saisie
+  // lors d'un encaissement précédent). Volontairement distinct du flux
+  // "Encaisser" (RecordPaymentDto), qui ne fait qu'ajouter un nouveau
+  // paiement et ne peut jamais faire baisser le montant reçu. Le service
+  // refuse toute valeur qui ferait apparaître un prix inférieur au montant
+  // reçu, ou un montant reçu supérieur au prix moins la remise (voir
+  // TreatmentsService.update).
+  @ApiPropertyOptional({ example: 90, description: 'Montant encaissé corrigé (DT)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  montantRecu?: number;
 }
 
 export class UpdateTreatmentDto {
