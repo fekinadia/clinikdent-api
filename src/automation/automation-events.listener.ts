@@ -118,25 +118,51 @@ export class AutomationEventsListener {
     const settings = await this.automationSettingsService.get(payload.cabinetId);
     if (!settings.noShowActif) return;
 
-    // Idempotence : le check-then-act ci-dessous reste la première ligne de
-    // défense (évite un aller-retour DB inutile dans le cas courant), mais
-    // la garantie réelle vient de la contrainte @@unique(appointmentId)
-    // (STEP 4) — si deux déclenchements concurrents (cron + action manuelle,
-    // ou double passage de cron) passent tous les deux ce check, le create()
-    // qui échouera avec P2002 est rattrapé ci-dessous sans lever d'erreur.
+    // Idempotence : seule une relance encore ACTIVE (`en_attente`) pour ce
+    // RDV signifie qu'il n'y a rien à faire (le check-then-act reste la
+    // première ligne de défense ; la garantie réelle contre les doublons
+    // vient de la contrainte @@unique(appointmentId), rattrapée plus bas).
+    //
+    // Une relance déjà résolue (`annule`/`recupere`/`perdu`) correspond à
+    // un cycle no-show antérieur déjà clos — si le RDV redevient no_show
+    // aujourd'hui (marqué à nouveau après une correction, ou re-détecté par
+    // le cron), il faut réactiver le workflow, pas l'ignorer silencieusement.
+    // Bug confirmé le 2026-09-09 (checklist STEP4 section 6) : l'ancienne
+    // version traitait toute relance existante, quel que soit son statut,
+    // comme une preuve d'idempotence — un RDV repassé no_show après une
+    // correction ne recevait alors plus jamais de relance.
     const existing = await this.prisma.noShowRecovery.findFirst({
       where: { appointmentId: payload.appointmentId },
     });
-    if (existing) return;
+    if (existing?.statut === 'en_attente') return;
 
     let recovery;
     try {
-      recovery = await this.prisma.noShowRecovery.create({
-        data: {
-          appointmentId: payload.appointmentId,
-          statut: 'en_attente',
-        },
-      });
+      if (existing) {
+        // La contrainte @@unique(appointmentId) interdit un second create()
+        // pour ce RDV : on réactive la relance existante (déjà résolue) en
+        // la remettant à 'en_attente', et on efface ce qui appartenait à
+        // son ancien cycle (date d'envoi précédente, lien vers un ancien
+        // "nouveau RDV") pour repartir sur une relance propre. On avance
+        // aussi `createdAt` pour qu'elle réapparaisse en tête de la liste
+        // des relances (tri par `createdAt: desc`), comme une relance neuve.
+        recovery = await this.prisma.noShowRecovery.update({
+          where: { id: existing.id },
+          data: {
+            statut: 'en_attente',
+            relanceEnvoyeeAt: null,
+            nouveauAppointmentId: null,
+            createdAt: new Date(),
+          },
+        });
+      } else {
+        recovery = await this.prisma.noShowRecovery.create({
+          data: {
+            appointmentId: payload.appointmentId,
+            statut: 'en_attente',
+          },
+        });
+      }
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
