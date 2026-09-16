@@ -21,4 +21,14 @@ export class StatisticsController {
     const safeMonths = Math.min(Math.max(Number.isNaN(parsed) ? 6 : parsed, 1), 24);
     return this.statisticsService.getOverview(user.cabinetId, safeMonths);
   }
+
+  // STEP 4 — alimente AutomationOverviewPage (No-shows / En attente /
+  // Récupérés / Perdus), à la place du placeholder précédent.
+  @Get('automation-overview')
+  @ApiOperation({
+    summary: "Vue d'ensemble de l'automatisation no-show (compteurs cumulés du cabinet)",
+  })
+  automationOverview(@CurrentUser() user: CurrentUserType) {
+    return this.statisticsService.getAutomationOverview(user.cabinetId);
+  }
 }

@@ -6,17 +6,28 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../audit/audit-log.service';
 import {
   CreateAppointmentDto,
   UpdateAppointmentDto,
   ListAppointmentsQueryDto,
 } from './dto/appointment.dto';
 
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
+}
+
+// Statuts considérés comme "résolus" : un RDV déjà annulé ou terminé ne peut
+// pas être reclassé no-show a posteriori (STEP 4 — endpoint dédié).
+const STATUTS_RESOLUS = ['annule', 'termine'];
+
 @Injectable()
 export class AppointmentsService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private auditLog: AuditLogService,
   ) {}
 
   async create(cabinetId: number, userId: number, dto: CreateAppointmentDto) {
@@ -141,7 +152,12 @@ export class AppointmentsService {
     return appt;
   }
 
-  async update(cabinetId: number, id: number, dto: UpdateAppointmentDto) {
+  async update(
+    cabinetId: number,
+    id: number,
+    dto: UpdateAppointmentDto,
+    actor?: ActorContext,
+  ) {
     const before = await this.findOne(cabinetId, id);
 
     // Si le RDV est ré-attaché à un autre patient/médecin/type, vérifier
@@ -211,8 +227,97 @@ export class AppointmentsService {
           cabinetId: updated.cabinetId,
           patientId: updated.patientId,
         });
+        await this.auditLog.log({
+          userId: actor?.userId,
+          cabinetId: updated.cabinetId,
+          action: 'appointment.no_show',
+          entityType: 'Appointment',
+          entityId: updated.id,
+          details: { source: 'manual_generic_update' },
+          ipAddress: actor?.ipAddress,
+        });
       }
     }
+
+    // STEP 4 — correction d'une classification no-show erronée : si le RDV
+    // SORTAIT de no_show (quel que soit son nouveau statut), la relance
+    // associée ne doit plus jamais être envoyée. On journalise aussi
+    // l'action car c'est une correction sensible (annule un envoi prévu).
+    // Indépendant du bloc ci-dessus : une transition no_show → annule doit
+    // à la fois émettre 'appointment.cancelled' (RDV) ET invalider la
+    // relance (ce bloc), les deux réactions sont légitimes simultanément.
+    if (
+      dto.statut !== undefined &&
+      before.statut === 'no_show' &&
+      updated.statut !== 'no_show'
+    ) {
+      this.eventEmitter.emit('appointment.no_show_corrected', {
+        appointmentId: updated.id,
+        cabinetId: updated.cabinetId,
+      });
+      await this.auditLog.log({
+        userId: actor?.userId,
+        cabinetId: updated.cabinetId,
+        action: 'appointment.no_show_corrected',
+        entityType: 'Appointment',
+        entityId: updated.id,
+        details: { ancienStatut: 'no_show', nouveauStatut: updated.statut },
+        ipAddress: actor?.ipAddress,
+      });
+    }
+
+    return updated;
+  }
+
+  /**
+   * STEP 4 — marquage manuel d'un no-show, endpoint dédié
+   * (POST /appointments/:id/no-show) plutôt que le PATCH générique : on
+   * veut ici une validation métier spécifique (RDV pas déjà résolu) et une
+   * garantie d'idempotence explicite, sans reposer sur la discipline du
+   * frontend. Isolation cabinet stricte en 404 (jamais 403) pour ne
+   * jamais révéler qu'un ID appartient à un autre cabinet.
+   */
+  async markNoShow(cabinetId: number, id: number, actor: ActorContext) {
+    const appt = await this.prisma.appointment.findUnique({ where: { id } });
+    if (!appt || appt.cabinetId !== cabinetId) {
+      throw new NotFoundException('Rendez-vous introuvable');
+    }
+
+    // Idempotent : un appel répété sur un RDV déjà no_show ne doit jamais
+    // créer une seconde NoShowRecovery (voir AutomationEventsListener, qui
+    // vérifie déjà l'absence de doublon, mais on évite ici même de ré-émettre
+    // l'événement et de ré-auditer une action qui n'a rien changé).
+    if (appt.statut === 'no_show') {
+      return this.findOne(cabinetId, id);
+    }
+
+    if (STATUTS_RESOLUS.includes(appt.statut)) {
+      throw new BadRequestException(
+        'Ce rendez-vous est déjà résolu (annulé ou terminé) et ne peut pas être marqué no-show',
+      );
+    }
+
+    const updated = await this.prisma.appointment.update({
+      where: { id },
+      data: { statut: 'no_show' },
+      include: { patient: true, type: true, medecin: true },
+    });
+
+    this.eventEmitter.emit('appointment.no_show', {
+      appointmentId: updated.id,
+      cabinetId: updated.cabinetId,
+      patientId: updated.patientId,
+    });
+
+    await this.auditLog.log({
+      userId: actor.userId,
+      cabinetId,
+      action: 'appointment.no_show',
+      entityType: 'Appointment',
+      entityId: updated.id,
+      details: { source: 'manual_dedicated_endpoint', ancienStatut: appt.statut },
+      ipAddress: actor.ipAddress,
+    });
 
     return updated;
   }

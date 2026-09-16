@@ -192,7 +192,44 @@ export class PatientsService {
       throw new ForbiddenException("Ce patient n'appartient pas à votre cabinet");
     }
 
-    return patient;
+    // STEP 4 — compteur no-show calculé à la volée plutôt que dupliqué sur
+    // le modèle Patient : le volume par patient reste faible (dizaines de
+    // RDV, pas des milliers), un COUNT sur l'index existant
+    // Appointment.@@index([patientId]) suffit largement, et évite tout
+    // risque de compteur qui dérive de la réalité des RDV.
+    const noShowCount = await this.prisma.appointment.count({
+      where: { patientId: id, statut: 'no_show' },
+    });
+
+    return { ...patient, noShowCount };
+  }
+
+  /**
+   * STEP 4 — historique complet des no-shows d'un patient (pas seulement
+   * les 10 derniers RDV renvoyés par findOne). Dérivé entièrement de
+   * `Appointment`/`NoShowRecovery` existants, aucune nouvelle table.
+   */
+  async getNoShowHistory(cabinetId: number, id: number) {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient || patient.cabinetId !== cabinetId) {
+      throw new NotFoundException('Patient introuvable');
+    }
+
+    const noShows = await this.prisma.appointment.findMany({
+      where: { patientId: id, statut: 'no_show' },
+      orderBy: { dateDebut: 'desc' },
+      include: {
+        type: true,
+        medecin: { select: { id: true, nom: true, prenom: true } },
+        noShowRecoveries: true,
+      },
+    });
+
+    return {
+      total: noShows.length,
+      derniereDateAt: noShows[0]?.dateDebut ?? null,
+      rendezVous: noShows,
+    };
   }
 
   async update(cabinetId: number, id: number, dto: UpdatePatientDto, actor?: ActorContext) {

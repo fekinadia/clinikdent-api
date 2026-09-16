@@ -60,6 +60,15 @@ export class PatientsController {
     return this.patientsService.findOne(user.cabinetId, id);
   }
 
+  // STEP 4 — historique des no-show du patient (total + liste des RDV
+  // marqués no_show, avec l'état de relance associé). Dérivé entièrement
+  // des données RDV/relances existantes, isolation cabinet stricte (404).
+  @Get(':id/no-shows')
+  @ApiOperation({ summary: "Historique des no-show d'un patient" })
+  getNoShowHistory(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
+    return this.patientsService.getNoShowHistory(user.cabinetId, id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Modifier un patient' })
   update(
