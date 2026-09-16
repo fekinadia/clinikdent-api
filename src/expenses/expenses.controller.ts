@@ -14,15 +14,14 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
-import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 
-// Dépenses du cabinet (loyer, salaires, fournitures, etc.) : lecture
-// partagée admin + médecin (même logique que le catalogue d'actes et la
-// page Facturation), mutations réservées à l'admin car c'est de l'argent
-// qui sort du cabinet — voir la matrice d'autorisation STEP 3 (ActsController).
+// Dépenses du cabinet (loyer, salaires, fournitures, etc.) : lecture ET
+// mutations partagées admin + médecin (choix explicite de Nadia le
+// 2026-09-16 — un médecin doit pouvoir enregistrer une dépense depuis son
+// propre compte au quotidien, pas seulement un compte admin).
 @ApiTags('Dépenses')
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
@@ -50,8 +49,7 @@ export class ExpensesController {
   }
 
   @Post()
-  @Roles('admin')
-  @ApiOperation({ summary: 'Enregistrer une nouvelle dépense (admin uniquement)' })
+  @ApiOperation({ summary: 'Enregistrer une nouvelle dépense' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreateExpenseDto, @Req() req: Request) {
     return this.expensesService.create(user.cabinetId, dto, {
       userId: user.userId,
@@ -60,8 +58,7 @@ export class ExpensesController {
   }
 
   @Patch(':id')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Modifier une dépense (admin uniquement)' })
+  @ApiOperation({ summary: 'Modifier une dépense' })
   update(
     @CurrentUser() user: CurrentUserType,
     @Param('id', ParseIntPipe) id: number,
@@ -75,8 +72,7 @@ export class ExpensesController {
   }
 
   @Delete(':id')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Supprimer une dépense (admin uniquement)' })
+  @ApiOperation({ summary: 'Supprimer une dépense' })
   delete(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.expensesService.delete(user.cabinetId, id, {
       userId: user.userId,
