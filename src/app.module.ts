@@ -19,6 +19,7 @@ import { StatisticsModule } from './statistics/statistics.module';
 import { AutomationModule } from './automation/automation.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { FinanceModule } from './finance/finance.module';
+import { ExpensesModule } from './expenses/expenses.module';
 import { SmsModule } from './sms/sms.module';
 import { AdminModule } from './admin/admin.module';
 
@@ -42,6 +43,7 @@ import { AdminModule } from './admin/admin.module';
     AutomationModule,
     WhatsAppModule,
     FinanceModule,
+    ExpensesModule,
     SmsModule,
     AdminModule,
   ],
