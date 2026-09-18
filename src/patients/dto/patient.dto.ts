@@ -83,7 +83,7 @@ export class CreatePatientDto {
   @IsOptional()
   @IsString()
   antecedents?: string;
-  
+
   @ApiPropertyOptional({
     description:
       "Marque la fiche comme un simple prospect (créée à la volée lors d'un RDV, pas encore un vrai patient). Se remet automatiquement à false dès que la fiche est modifiée ou que le patient honore un rendez-vous.",
@@ -92,9 +92,30 @@ export class CreatePatientDto {
   @IsOptional()
   @IsBoolean()
   estProspect?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'VIP',
+    description:
+      "Étiquette libre affichée dans la liste des patients (parité visuelle Dentalis). Modifiable aussi via PATCH /patients/:id/etiquette sans affecter le statut prospect.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  etiquette?: string;
 }
 
 export class UpdatePatientDto extends PartialType(CreatePatientDto) {}
+
+export class UpdateEtiquetteDto {
+  @ApiPropertyOptional({
+    example: 'VIP',
+    description: "Nouvelle étiquette du patient. Chaîne vide ou omise pour la retirer.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  etiquette?: string;
+}
 
 export class ListPatientsQueryDto {
   @ApiPropertyOptional({ description: 'Recherche par nom, prénom, GSM' })
@@ -109,4 +130,18 @@ export class ListPatientsQueryDto {
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
   limit?: number;
+
+  @ApiPropertyOptional({
+    description: "Si 'true', ne retourne que les patients ayant un reste à payer strictement positif.",
+  })
+  @IsOptional()
+  @IsString()
+  impayesOnly?: string;
+
+  @ApiPropertyOptional({
+    description: "Si 'true'/'false', filtre sur le statut prospect. Omis : tous les patients.",
+  })
+  @IsOptional()
+  @IsString()
+  estProspect?: string;
 }
