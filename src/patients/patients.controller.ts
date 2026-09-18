@@ -20,6 +20,7 @@ import { PatientsService } from './patients.service';
 import {
   CreatePatientDto,
   UpdatePatientDto,
+  UpdateEtiquetteDto,
   ListPatientsQueryDto,
 } from './dto/patient.dto';
 
@@ -81,6 +82,18 @@ export class PatientsController {
       userId: user.userId,
       ipAddress: req.ip,
     });
+  }
+
+  // Volet G — édition rapide de l'étiquette depuis la liste Patients, sans
+  // passer par le PATCH générique (qui remet toujours estProspect à false).
+  @Patch(':id/etiquette')
+  @ApiOperation({ summary: "Définir ou retirer l'étiquette libre d'un patient" })
+  updateEtiquette(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateEtiquetteDto,
+  ) {
+    return this.patientsService.updateEtiquette(user.cabinetId, id, dto.etiquette);
   }
 
   // Réservé aux administrateurs du cabinet — suppression définitive et en
