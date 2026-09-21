@@ -7,7 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, ChangePasswordDto } from './dto/auth.dto';
 import { TRIAL_DAYS } from '../billing/plan-limits';
 
 @Injectable()
@@ -75,6 +75,30 @@ export class AuthService {
     }
 
     return this.signToken(user.id, user.email, user.cabinetId, user.role);
+  }
+
+  // Volet "changer mon mot de passe" (2026-09-21) — exige de reprouver le
+  // mot de passe actuel (comme un login) avant d'en accepter un nouveau ;
+  // ne fait jamais confiance au seul fait d'avoir un JWT valide pour une
+  // opération aussi sensible.
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('Session invalide, veuillez vous reconnecter');
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Mot de passe actuel incorrect');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return { success: true };
   }
 
   // Le payload JWT reste volontairement minimal (sub/email/cabinetId) : le
