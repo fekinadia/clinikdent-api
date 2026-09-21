@@ -270,6 +270,27 @@ export class PatientsService {
     }
   }
 
+  /**
+   * Volet G — édition rapide de l'étiquette libre depuis la liste
+   * Patients, sans passer par update() (qui remet toujours estProspect à
+   * false, un effet de bord indésirable pour ce simple champ d'affichage).
+   * Chaîne vide normalisée en `null` pour retirer proprement l'étiquette.
+   */
+  async updateEtiquette(cabinetId: number, id: number, etiquette?: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient) {
+      throw new NotFoundException('Patient introuvable');
+    }
+    if (patient.cabinetId !== cabinetId) {
+      throw new ForbiddenException("Ce patient n'appartient pas à votre cabinet");
+    }
+
+    return this.prisma.patient.update({
+      where: { id },
+      data: { etiquette: etiquette?.trim() || null },
+    });
+  }
+
   async delete(cabinetId: number, id: number, actor?: ActorContext) {
     const patient = await this.findOne(cabinetId, id);
     await this.prisma.patient.delete({ where: { id } });
