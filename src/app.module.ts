@@ -22,6 +22,8 @@ import { FinanceModule } from './finance/finance.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { SmsModule } from './sms/sms.module';
 import { AdminModule } from './admin/admin.module';
+import { DocumentsModule } from './documents/documents.module';
+import { CabinetModule } from './cabinet/cabinet.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { AdminModule } from './admin/admin.module';
     ExpensesModule,
     SmsModule,
     AdminModule,
+    DocumentsModule,
+    CabinetModule,
   ],
   providers: [
     // Enregistré globalement pour éviter de dupliquer @UseGuards(RolesGuard)
