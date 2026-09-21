@@ -28,6 +28,17 @@ export class PrescriptionsController {
     return this.prescriptionsService.create(user.cabinetId, user.userId, dto);
   }
 
+  @Get('prescriptions')
+  @ApiOperation({ summary: 'Liste des ordonnances du cabinet (page Documents)' })
+  findAll(
+    @CurrentUser() user: CurrentUserType,
+    @Query('search') search?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.prescriptionsService.findAllByCabinet(user.cabinetId, { search, page, limit });
+  }
+
   @Get('patients/:patientId/prescriptions')
   @ApiOperation({ summary: "Ordonnances d'un patient" })
   findByPatient(

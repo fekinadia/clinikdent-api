@@ -36,6 +36,47 @@ export class PrescriptionsService {
     });
   }
 
+  /**
+   * Liste globale du cabinet, utilisée par la page Documents (chantier
+   * Dentalis, 2026-09-21) pour fusionner les ordonnances avec les 4
+   * autres types de documents (module Documents).
+   */
+  async findAllByCabinet(
+    cabinetId: number,
+    query: { search?: string; page?: number; limit?: number },
+  ) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { patient: { cabinetId } };
+    if (query.search) {
+      where.patient = {
+        cabinetId,
+        OR: [
+          { nom: { contains: query.search, mode: 'insensitive' } },
+          { prenom: { contains: query.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.prescription.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { dateEmission: 'desc' },
+        include: {
+          items: true,
+          patient: { select: { id: true, nom: true, prenom: true, numeroDossier: true } },
+        },
+      }),
+      this.prisma.prescription.count({ where }),
+    ]);
+
+    return { items, total, page, pageCount: Math.ceil(total / limit) || 1 };
+  }
+
   async findByPatient(cabinetId: number, patientId: number) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
