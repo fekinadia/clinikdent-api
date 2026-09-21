@@ -46,6 +46,7 @@ model Cabinet {
   whatsappTemplates     WhatsAppTemplate[]
   whatsappMessages      WhatsAppMessage[]
   recalls               Recall[]
+  documents              Document[]
 
   @@map("cabinets")
 }
@@ -98,6 +99,8 @@ model User {
   remindersCreated      Reminder[]
   prescriptionModelesCreated PrescriptionModele[]
   whatsappTemplatesCreated   WhatsAppTemplate[]
+  documentsMedecin           Document[] @relation("DocumentMedecin")
+  documentsCreated           Document[] @relation("DocumentCreatedBy")
 
   @@index([cabinetId])
   @@index([email])
@@ -154,6 +157,7 @@ model Patient {
   reminders     Reminder[]
   recalls          Recall[]
   whatsappMessages WhatsAppMessage[]
+  documents        Document[]
 
   @@unique([cabinetId, numeroDossier])
   @@index([cabinetId])
@@ -391,6 +395,40 @@ model PrescriptionItem {
   medication    Medication?  @relation(fields: [medicationId], references: [id])
 
   @@map("prescription_items")
+}
+
+// ============================================================
+// DOCUMENTS (certificats, lettres de liaison, devis, notes
+// d'honoraires). Les ordonnances restent dans leur propre table
+// Prescription ci-dessus ; ce modèle couvre les 4 autres types
+// générés depuis la fiche patient. La page Documents du frontend
+// réunit les deux tables (Prescription + Document) dans une seule
+// liste, triée par date, avec un filtre par type.
+// ============================================================
+
+model Document {
+  id            Int       @id @default(autoincrement())
+  cabinetId     Int       @map("cabinet_id")
+  patientId     Int       @map("patient_id")
+  // Valeurs : certificat_medical | lettre_liaison | devis | note_honoraires
+  type          String    @db.VarChar(30)
+  contenu       String    @db.Text
+  montant       Decimal?  @db.Decimal(10, 3)
+  medecinId     Int?      @map("medecin_id")
+  dateEmission  DateTime  @default(now()) @map("date_emission") @db.Date
+  createdById   Int?      @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  cabinet    Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medecin    User?   @relation("DocumentMedecin", fields: [medecinId], references: [id])
+  createdBy  User?   @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  @@index([cabinetId])
+  @@index([patientId])
+  @@index([type])
+  @@index([dateEmission])
+  @@map("documents")
 }
 
 // ============================================================
