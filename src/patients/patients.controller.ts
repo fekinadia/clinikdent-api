@@ -14,7 +14,6 @@ import {
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
-import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { PatientsService } from './patients.service';
 import {
@@ -96,12 +95,14 @@ export class PatientsController {
     return this.patientsService.updateEtiquette(user.cabinetId, id, dto.etiquette);
   }
 
-  // Réservé aux administrateurs du cabinet — suppression définitive et en
-  // cascade de tout le dossier patient (RDV, soins, paiements, images,
-  // ordonnances). Voir la matrice d'autorisation de l'audit du 2026-09-05.
+  // Suppression définitive et en cascade de tout le dossier patient (RDV,
+  // soins, paiements, images, ordonnances). Ouvert à tous les utilisateurs
+  // du cabinet (médecins compris) depuis le 2026-09-22, à la demande de
+  // Nadia — auparavant réservé aux administrateurs (voir la matrice
+  // d'autorisation de l'audit du 2026-09-05, désormais obsolète sur ce
+  // point précis).
   @Delete(':id')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Supprimer un patient (réservé aux administrateurs)' })
+  @ApiOperation({ summary: 'Supprimer un patient' })
   delete(
     @CurrentUser() user: CurrentUserType,
     @Param('id', ParseIntPipe) id: number,
