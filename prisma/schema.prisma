@@ -47,6 +47,7 @@ model Cabinet {
   whatsappMessages      WhatsAppMessage[]
   recalls               Recall[]
   documents              Document[]
+  calendarEvents         CalendarEvent[]
 
   @@map("cabinets")
 }
@@ -101,6 +102,8 @@ model User {
   whatsappTemplatesCreated   WhatsAppTemplate[]
   documentsMedecin           Document[] @relation("DocumentMedecin")
   documentsCreated           Document[] @relation("DocumentCreatedBy")
+  calendarEvents             CalendarEvent[]
+  calendarEventsCreated      CalendarEvent[] @relation("CalendarEventCreator")
 
   @@index([cabinetId])
   @@index([email])
@@ -218,6 +221,35 @@ model Appointment {
   @@index([dateDebut])
   @@index([statut])
   @@map("appointments")
+}
+
+// Bloc d'agenda libre (pause, réunion, blocage de créneau...) — à la
+// différence d'Appointment, volontairement SANS lien avec un patient. Ajouté
+// à la demande de Nadia (2026-09-23) : elle ne voulait pas avoir à créer un
+// patient fictif juste pour bloquer un créneau dans l'agenda. Modèle
+// entièrement séparé d'Appointment pour ne toucher à aucune des
+// automatisations qui supposent un patient valide (rappels SMS/WhatsApp,
+// détection no-show, relances) — aucune de ces fonctionnalités ne s'applique
+// à un simple événement.
+model CalendarEvent {
+  id          Int      @id @default(autoincrement())
+  cabinetId   Int      @map("cabinet_id")
+  titre       String   @db.VarChar(200)
+  medecinId   Int?     @map("medecin_id")
+  dateDebut   DateTime @map("date_debut")
+  dateFin     DateTime @map("date_fin")
+  createdById Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  medecin   User?   @relation(fields: [medecinId], references: [id])
+  createdBy User?   @relation("CalendarEventCreator", fields: [createdById], references: [id])
+
+  @@index([cabinetId])
+  @@index([medecinId])
+  @@index([dateDebut])
+  @@map("calendar_events")
 }
 
 // ============================================================
