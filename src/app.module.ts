@@ -9,6 +9,7 @@ import { RolesGuard } from './auth/roles.guard';
 import { AuditLogModule } from './audit/audit-log.module';
 import { PatientsModule } from './patients/patients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { CalendarEventsModule } from './calendar-events/calendar-events.module';
 import { TreatmentsModule } from './treatments/treatments.module';
 import { ActsModule } from './acts/acts.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
@@ -35,6 +36,7 @@ import { CabinetModule } from './cabinet/cabinet.module';
     AuthModule,
     PatientsModule,
     AppointmentsModule,
+    CalendarEventsModule,
     TreatmentsModule,
     ActsModule,
     PrescriptionsModule,
