@@ -177,3 +177,51 @@ describe('AppointmentsService.update — correction du statut no_show (fix relan
     expect(calls).not.toContain('appointment.no_show_corrected');
   });
 });
+
+describe("AppointmentsService.update — salle d'attente (heureArrivee / heureEntree)", () => {
+  function setup(before: any) {
+    const ctx = makeService();
+    ctx.prisma.appointment.findUnique.mockResolvedValue({ ...before });
+    ctx.prisma.appointment.update.mockImplementation(({ data }: any) =>
+      Promise.resolve({ ...before, ...data, patient: { estProspect: false }, type: null }),
+    );
+    return ctx;
+  }
+  const dataOf = (prisma: any) => prisma.appointment.update.mock.calls[0][0].data;
+
+  it("pose heureArrivee quand le patient est marqué arrivé", async () => {
+    const { service, prisma } = setup({ ...APPT_PLANIFIE, heureArrivee: null, heureEntree: null });
+    await service.update(CABINET_A, 100, { statut: 'arrive' });
+    expect(dataOf(prisma).heureArrivee).toBeInstanceOf(Date);
+    expect(dataOf(prisma).heureEntree).toBeNull();
+  });
+
+  it("conserve l'heure d'arrivée existante et pose heureEntree au passage en cours", async () => {
+    const arrivee = new Date('2026-09-26T08:05:00Z');
+    const { service, prisma } = setup({ ...APPT_PLANIFIE, statut: 'arrive', heureArrivee: arrivee, heureEntree: null });
+    await service.update(CABINET_A, 100, { statut: 'en_cours' });
+    expect(dataOf(prisma).heureArrivee).toBe(arrivee);
+    expect(dataOf(prisma).heureEntree).toBeInstanceOf(Date);
+  });
+
+  it("pose aussi heureArrivee si le patient passe directement au fauteuil", async () => {
+    const { service, prisma } = setup({ ...APPT_PLANIFIE, statut: 'confirme', heureArrivee: null, heureEntree: null });
+    await service.update(CABINET_A, 100, { statut: 'en_cours' });
+    expect(dataOf(prisma).heureArrivee).toBeInstanceOf(Date);
+    expect(dataOf(prisma).heureEntree).toBeInstanceOf(Date);
+  });
+
+  it("efface les heures si l'arrivée est annulée (retour à confirmé)", async () => {
+    const { service, prisma } = setup({ ...APPT_PLANIFIE, statut: 'arrive', heureArrivee: new Date(), heureEntree: null });
+    await service.update(CABINET_A, 100, { statut: 'confirme' });
+    expect(dataOf(prisma).heureArrivee).toBeNull();
+    expect(dataOf(prisma).heureEntree).toBeNull();
+  });
+
+  it("ne touche pas aux heures si le statut ne change pas", async () => {
+    const { service, prisma } = setup({ ...APPT_PLANIFIE, statut: 'arrive', heureArrivee: new Date(), heureEntree: null });
+    await service.update(CABINET_A, 100, { observation: 'note' });
+    expect(dataOf(prisma)).not.toHaveProperty('heureArrivee');
+    expect(dataOf(prisma)).not.toHaveProperty('heureEntree');
+  });
+});

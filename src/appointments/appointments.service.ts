@@ -121,6 +121,36 @@ export class AppointmentsService {
     });
   }
 
+  /**
+   * Salle d'attente (2026-09-26) : horodatage automatique des transitions.
+   * - vers 'arrive'   : heureArrivee = maintenant (si pas déjà renseignée)
+   * - vers 'en_cours' : heureEntree = maintenant, et heureArrivee aussi si le
+   *   patient est passé directement au fauteuil sans être marqué arrivé
+   * - retour à 'planifie'/'confirme' (arrivée annulée par erreur) : on efface
+   *   les deux heures pour ne pas fausser les temps d'attente.
+   * Aucun changement si le statut n'est pas modifié.
+   */
+  private salleAttenteTimestamps(
+    before: { statut: string; heureArrivee: Date | null; heureEntree: Date | null },
+    nouveauStatut?: string,
+  ): { heureArrivee?: Date | null; heureEntree?: Date | null } {
+    if (nouveauStatut === undefined || nouveauStatut === before.statut) return {};
+    const now = new Date();
+    if (nouveauStatut === 'arrive') {
+      return { heureArrivee: before.heureArrivee ?? now, heureEntree: null };
+    }
+    if (nouveauStatut === 'en_cours') {
+      return {
+        heureArrivee: before.heureArrivee ?? now,
+        heureEntree: before.heureEntree ?? now,
+      };
+    }
+    if (nouveauStatut === 'planifie' || nouveauStatut === 'confirme') {
+      return { heureArrivee: null, heureEntree: null };
+    }
+    return {};
+  }
+
   async findToday(cabinetId: number) {
     const today = new Date();
     const start = new Date(today.setHours(0, 0, 0, 0));
@@ -135,6 +165,7 @@ export class AppointmentsService {
       include: {
         patient: { select: { id: true, nom: true, prenom: true, gsm: true } },
         type: true,
+        medecin: { select: { id: true, nom: true, prenom: true } },
       },
     });
   }
@@ -183,6 +214,7 @@ export class AppointmentsService {
         ...dto,
         dateDebut: dto.dateDebut ? new Date(dto.dateDebut) : undefined,
         dateFin: dto.dateFin ? new Date(dto.dateFin) : undefined,
+        ...this.salleAttenteTimestamps(before, dto.statut),
       },
       include: { patient: true, type: true },
     });
@@ -193,7 +225,9 @@ export class AppointmentsService {
     if (
       dto.statut !== undefined &&
       dto.statut !== before.statut &&
-      (updated.statut === 'en_cours' || updated.statut === 'termine') &&
+      (updated.statut === 'arrive' ||
+        updated.statut === 'en_cours' ||
+        updated.statut === 'termine') &&
       updated.patient.estProspect
     ) {
       await this.prisma.patient.update({
