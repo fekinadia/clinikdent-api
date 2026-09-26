@@ -199,6 +199,10 @@ model Appointment {
   statut         String   @default("planifie") @db.VarChar(20)
   observation    String?  @db.Text
   rappelEnvoye   Boolean  @default(false) @map("rappel_envoye")
+  // Salle d'attente (2026-09-26) : heure d'arrivée du patient au cabinet
+  // (statut 'arrive') et heure d'entrée au fauteuil (statut 'en_cours').
+  heureArrivee   DateTime? @map("heure_arrivee")
+  heureEntree    DateTime? @map("heure_entree")
   createdById    Int?     @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
