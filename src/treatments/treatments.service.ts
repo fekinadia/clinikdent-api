@@ -320,6 +320,13 @@ export class TreatmentsService {
           modeReglement,
           remarque: dto.remarque,
           createdById: userId,
+          ...(modeReglement === 'cheque'
+            ? {
+                numeroCheque: dto.numeroCheque || null,
+                banque: dto.banque || null,
+                dateEcheance: dto.dateEcheance ? new Date(dto.dateEcheance) : null,
+              }
+            : {}),
         },
       }),
     ]);
