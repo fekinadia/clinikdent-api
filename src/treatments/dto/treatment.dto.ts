@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -178,4 +179,22 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsString()
   remarque?: string;
+
+  // Caisse & chèques (2026-09-27) — pris en compte uniquement si le mode est « cheque ».
+  @ApiPropertyOptional({ example: '0012345' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  numeroCheque?: string;
+
+  @ApiPropertyOptional({ example: 'BIAT' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  banque?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-15', description: "Date d'échéance (chèque post-daté)" })
+  @IsOptional()
+  @IsDateString()
+  dateEcheance?: string;
 }
