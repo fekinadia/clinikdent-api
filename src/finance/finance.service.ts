@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 function round(n: number): number {
@@ -135,5 +135,133 @@ export class FinanceService {
       prenomPatient: p.patient.prenom,
       numeroDossier: p.patient.numeroDossier,
     }));
+  }
+
+  // ==== CAISSE & CHÈQUES (2026-09-27) ====
+
+  /**
+   * Journal de caisse d'une journée : tous les encaissements dont la date de
+   * paiement est `date` (YYYY-MM-DD), avec les totaux par mode de règlement.
+   */
+  async getCaisse(cabinetId: number, date: string) {
+    const jour = new Date(`${date}T00:00:00.000Z`);
+    const payments = await this.prisma.payment.findMany({
+      where: { patient: { cabinetId }, datePaiement: jour },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        montant: true,
+        modeReglement: true,
+        numeroCheque: true,
+        banque: true,
+        dateEcheance: true,
+        dateEncaissement: true,
+        createdAt: true,
+        patient: { select: { id: true, nom: true, prenom: true, numeroDossier: true } },
+        treatmentAct: { select: { libelle: true } },
+        createdBy: { select: { prenom: true, nom: true } },
+      },
+    });
+
+    const parMode: Record<string, number> = {};
+    let total = 0;
+    for (const p of payments) {
+      const m = Number(p.montant);
+      total += m;
+      parMode[p.modeReglement] = round((parMode[p.modeReglement] || 0) + m);
+    }
+
+    return {
+      date,
+      total: round(total),
+      nombre: payments.length,
+      parMode,
+      paiements: payments.map((p) => ({
+        id: p.id,
+        heure: p.createdAt,
+        montant: Number(p.montant),
+        modeReglement: p.modeReglement,
+        numeroCheque: p.numeroCheque,
+        banque: p.banque,
+        dateEcheance: p.dateEcheance,
+        dateEncaissement: p.dateEncaissement,
+        acte: p.treatmentAct?.libelle ?? null,
+        patientId: p.patient.id,
+        nomPatient: p.patient.nom,
+        prenomPatient: p.patient.prenom,
+        numeroDossier: p.patient.numeroDossier,
+        encaissePar: p.createdBy ? `${p.createdBy.prenom} ${p.createdBy.nom}` : null,
+      })),
+    };
+  }
+
+  /**
+   * Suivi des chèques reçus. « En attente » = pas encore de date
+   * d'encaissement. Tri : les échéances les plus proches d'abord (les
+   * chèques sans échéance, encaissables tout de suite, en tête).
+   */
+  async listCheques(cabinetId: number, statut: 'en_attente' | 'encaisse' | 'tous' = 'en_attente') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { patient: { cabinetId }, modeReglement: 'cheque' };
+    if (statut === 'en_attente') where.dateEncaissement = null;
+    if (statut === 'encaisse') where.dateEncaissement = { not: null };
+
+    const cheques = await this.prisma.payment.findMany({
+      where,
+      orderBy:
+        statut === 'encaisse'
+          ? [{ dateEncaissement: 'desc' }]
+          : [{ dateEcheance: { sort: 'asc', nulls: 'first' } }, { datePaiement: 'asc' }],
+      select: {
+        id: true,
+        montant: true,
+        numeroCheque: true,
+        banque: true,
+        dateEcheance: true,
+        dateEncaissement: true,
+        datePaiement: true,
+        patient: { select: { id: true, nom: true, prenom: true, numeroDossier: true } },
+      },
+    });
+
+    const items = cheques.map((c) => ({
+      id: c.id,
+      montant: Number(c.montant),
+      numeroCheque: c.numeroCheque,
+      banque: c.banque,
+      dateEcheance: c.dateEcheance,
+      dateEncaissement: c.dateEncaissement,
+      datePaiement: c.datePaiement,
+      patientId: c.patient.id,
+      nomPatient: c.patient.nom,
+      prenomPatient: c.patient.prenom,
+      numeroDossier: c.patient.numeroDossier,
+    }));
+    const totalEnAttente = round(
+      items.filter((c) => !c.dateEncaissement).reduce((s, c) => s + c.montant, 0),
+    );
+    return { total: round(items.reduce((s, c) => s + c.montant, 0)), totalEnAttente, cheques: items };
+  }
+
+  /**
+   * Marque un chèque comme encaissé (date du jour par défaut) ou annule
+   * l'encaissement (erreur de clic). Isolation cabinet stricte, 404 si le
+   * paiement n'existe pas, n'est pas un chèque ou appartient à un autre cabinet.
+   */
+  async setChequeEncaisse(cabinetId: number, paymentId: number, encaisse: boolean, date?: string) {
+    const p = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, modeReglement: true, patient: { select: { cabinetId: true } } },
+    });
+    if (!p || p.patient.cabinetId !== cabinetId || p.modeReglement !== 'cheque') {
+      throw new NotFoundException('Chèque introuvable');
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const updated = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { dateEncaissement: encaisse ? new Date(`${date || today}T00:00:00.000Z`) : null },
+      select: { id: true, dateEncaissement: true },
+    });
+    return updated;
   }
 }

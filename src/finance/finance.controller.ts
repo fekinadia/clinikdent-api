@@ -1,8 +1,9 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { FinanceService } from './finance.service';
+import { CaisseQueryDto, ChequesQueryDto, SetChequeEncaisseDto } from './dto/caisse.dto';
 
 @ApiTags('Facturation')
 @ApiBearerAuth()
@@ -42,5 +43,30 @@ export class FinanceController {
       to,
       patientId ? parseInt(patientId, 10) : undefined,
     );
+  }
+
+  // ==== CAISSE & CHÈQUES (2026-09-27) ====
+
+  @Get('caisse')
+  @ApiOperation({ summary: "Journal de caisse d'une journée (totaux par mode de règlement)" })
+  caisse(@CurrentUser() user: CurrentUserType, @Query() query: CaisseQueryDto) {
+    const date = query.date || new Date().toISOString().slice(0, 10);
+    return this.financeService.getCaisse(user.cabinetId, date);
+  }
+
+  @Get('cheques')
+  @ApiOperation({ summary: 'Suivi des chèques (en attente / encaissés / tous)' })
+  cheques(@CurrentUser() user: CurrentUserType, @Query() query: ChequesQueryDto) {
+    return this.financeService.listCheques(user.cabinetId, query.statut || 'en_attente');
+  }
+
+  @Patch('cheques/:id')
+  @ApiOperation({ summary: "Marquer un chèque encaissé (ou annuler l'encaissement)" })
+  setCheque(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetChequeEncaisseDto,
+  ) {
+    return this.financeService.setChequeEncaisse(user.cabinetId, id, dto.encaisse, dto.dateEncaissement);
   }
 }
