@@ -529,6 +529,10 @@ model Payment {
   montant           Decimal  @db.Decimal(10, 3)
   modeReglement     String   @map("mode_reglement") @db.VarChar(20)
   numeroCheque      String?  @map("numero_cheque") @db.VarChar(50)
+  // Caisse & chèques (2026-09-27) : banque émettrice et date d'échéance
+  // (chèques post-datés). dateEncaissement existante = chèque encaissé.
+  banque            String?  @db.VarChar(100)
+  dateEcheance      DateTime? @map("date_echeance") @db.Date
   datePaiement      DateTime @default(now()) @map("date_paiement") @db.Date
   dateEncaissement  DateTime? @map("date_encaissement") @db.Date
   remarque          String?  @db.Text
