@@ -72,27 +72,56 @@ export class TreatmentsService {
       }
     }
 
-    return this.prisma.treatment.create({
-      data: {
-        patientId: dto.patientId,
-        appointmentId: dto.appointmentId,
-        dateSoin: new Date(dto.dateSoin),
-        observations: dto.observations,
-        medecinId: userId,
-        acts: {
-          create: dto.acts.map((a) => ({
-            acteId: a.acteId,
-            libelle: a.libelle,
-            dents: a.dents,
-            cout: a.cout,
-            montantRecu: a.montantRecu || 0,
-            remise: a.remise || 0,
-            modeReglement: a.modeReglement,
-            typeSoin: a.typeSoin || 'realise',
-          })),
+    // Caisse & chèques (2026-09-28) : un montant "Payé" saisi ici, à la
+    // création du soin, n'existait auparavant que comme le champ
+    // TreatmentAct.montantRecu — aucune ligne `Payment` n'était créée. Ce
+    // paiement était donc invisible dans Caisse & chèques ET dans le
+    // "Total encaissé" de Facturation/Statistiques (qui lisent tous les
+    // deux la table Payment, alimentée jusqu'ici uniquement par
+    // recordPayment(), c.-à-d. le bouton "Encaisser" sur un reste dû).
+    // On crée maintenant une ligne Payment pour chaque acte payé dès la
+    // création, avec la même sémantique que recordPayment() (mode de
+    // règlement, chèque le cas échéant côté détails non collectés ici —
+    // le dialogue de création n'a pas de champs N°/banque/échéance).
+    return this.prisma.$transaction(async (tx) => {
+      const treatment = await tx.treatment.create({
+        data: {
+          patientId: dto.patientId,
+          appointmentId: dto.appointmentId,
+          dateSoin: new Date(dto.dateSoin),
+          observations: dto.observations,
+          medecinId: userId,
+          acts: {
+            create: dto.acts.map((a) => ({
+              acteId: a.acteId,
+              libelle: a.libelle,
+              dents: a.dents,
+              cout: a.cout,
+              montantRecu: a.montantRecu || 0,
+              remise: a.remise || 0,
+              modeReglement: a.modeReglement,
+              typeSoin: a.typeSoin || 'realise',
+            })),
+          },
         },
-      },
-      include: { acts: true, patient: true },
+        include: { acts: true, patient: true },
+      });
+
+      const actsPayes = treatment.acts.filter((a) => Number(a.montantRecu) > 0);
+      if (actsPayes.length > 0) {
+        await tx.payment.createMany({
+          data: actsPayes.map((a) => ({
+            patientId: dto.patientId,
+            treatmentActId: a.id,
+            montant: a.montantRecu,
+            modeReglement: a.modeReglement || 'especes',
+            datePaiement: new Date(dto.dateSoin),
+            createdById: userId,
+          })),
+        });
+      }
+
+      return treatment;
     });
   }
 
