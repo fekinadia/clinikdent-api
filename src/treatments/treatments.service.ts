@@ -277,7 +277,15 @@ export class TreatmentsService {
     return this.prisma.treatment.findMany({
       where: { patientId },
       orderBy: { dateSoin: 'desc' },
-      include: { acts: true, medecin: { select: { nom: true, prenom: true } } },
+      include: {
+        // Historique des soins (2026-09-30) : on inclut les paiements de
+        // chaque acte (avec leur propre datePaiement) pour que le frontend
+        // puisse afficher, sous la ligne du soin, la ou les dates réelles
+        // d'encaissement — qui peuvent être postérieures à dateSoin quand
+        // le reste dû est réglé plus tard.
+        acts: { include: { payments: { orderBy: { datePaiement: 'asc' } } } },
+        medecin: { select: { nom: true, prenom: true } },
+      },
     });
   }
 
