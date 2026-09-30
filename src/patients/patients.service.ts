@@ -143,9 +143,24 @@ export class PatientsService {
     const where: any = { cabinetId };
 
     if (query.search) {
+      // Recherche "prénom nom" (2026-09-30) : avant, "karim benali" ne
+      // trouvait rien car on cherchait la chaîne ENTIÈRE dans nom OU dans
+      // prenom séparément — or "karim benali" n'apparaît ni dans nom
+      // ("Benali") ni dans prenom ("Karim") pris isolément. On découpe
+      // maintenant la recherche en mots et on exige que CHAQUE mot se
+      // retrouve dans nom OU prenom (peu importe l'ordre des mots), ce qui
+      // couvre "karim benali" comme "benali karim".
+      const words = query.search.trim().split(/\s+/).filter(Boolean);
+      const nameMatch = {
+        AND: words.map((w) => ({
+          OR: [
+            { nom: { contains: w, mode: 'insensitive' } },
+            { prenom: { contains: w, mode: 'insensitive' } },
+          ],
+        })),
+      };
       where.OR = [
-        { nom: { contains: query.search, mode: 'insensitive' } },
-        { prenom: { contains: query.search, mode: 'insensitive' } },
+        nameMatch,
         { gsm: { contains: query.search } },
         { numeroDossier: { contains: query.search } },
       ];
