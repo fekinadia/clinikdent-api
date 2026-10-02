@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { PatientsService } from './patients.service';
 import {
@@ -30,6 +31,10 @@ import {
 export class PatientsController {
   constructor(private patientsService: PatientsService) {}
 
+  // Équipe & rôles (2026-09-29) : identité patient modifiable par
+  // assistante/réception, en lecture seule pour comptable (matrice validée
+  // par Nadia, roadmap parité Cabinet Care).
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Post()
   @ApiOperation({ summary: 'Créer un nouveau patient' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreatePatientDto) {
@@ -69,6 +74,7 @@ export class PatientsController {
     return this.patientsService.getNoShowHistory(user.cabinetId, id);
   }
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Patch(':id')
   @ApiOperation({ summary: 'Modifier un patient' })
   update(
@@ -85,6 +91,7 @@ export class PatientsController {
 
   // Volet G — édition rapide de l'étiquette depuis la liste Patients, sans
   // passer par le PATCH générique (qui remet toujours estProspect à false).
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Patch(':id/etiquette')
   @ApiOperation({ summary: "Définir ou retirer l'étiquette libre d'un patient" })
   updateEtiquette(
@@ -101,6 +108,7 @@ export class PatientsController {
   // Nadia — auparavant réservé aux administrateurs (voir la matrice
   // d'autorisation de l'audit du 2026-09-05, désormais obsolète sur ce
   // point précis).
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Delete(':id')
   @ApiOperation({ summary: 'Supprimer un patient' })
   delete(

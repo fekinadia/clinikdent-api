@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { TreatmentsService } from './treatments.service';
 import {
@@ -29,12 +30,16 @@ import {
 export class TreatmentsController {
   constructor(private treatmentsService: TreatmentsService) {}
 
+  // Équipe & rôles (2026-09-29) : soins/odontogramme/ordonnances en lecture
+  // seule pour assistante, aucun accès pour réception/comptable.
+  @Roles('admin', 'medecin')
   @Post('treatments')
   @ApiOperation({ summary: 'Créer une séance de soins avec ses actes' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreateTreatmentDto) {
     return this.treatmentsService.create(user.cabinetId, user.userId, dto);
   }
 
+  @Roles('admin', 'medecin')
   @Patch('treatments/:id')
   @ApiOperation({
     summary:
@@ -52,6 +57,7 @@ export class TreatmentsController {
     });
   }
 
+  @Roles('admin', 'medecin', 'assistante')
   @Get('patients/:patientId/treatments')
   @ApiOperation({ summary: "Historique des soins d'un patient" })
   findByPatient(
@@ -61,6 +67,7 @@ export class TreatmentsController {
     return this.treatmentsService.findByPatient(user.cabinetId, patientId);
   }
 
+  @Roles('admin', 'medecin', 'assistante')
   @Get('patients/:patientId/financial-summary')
   @ApiOperation({ summary: 'Résumé financier (dû, payé, reste)' })
   financialSummary(
@@ -70,6 +77,7 @@ export class TreatmentsController {
     return this.treatmentsService.getFinancialSummary(user.cabinetId, patientId);
   }
 
+  @Roles('admin', 'medecin', 'assistante')
   @Get('patients/:patientId/tooth-chart')
   @ApiOperation({ summary: 'Récupérer le schéma dentaire' })
   getChart(
@@ -79,6 +87,7 @@ export class TreatmentsController {
     return this.treatmentsService.getToothChart(user.cabinetId, patientId);
   }
 
+  @Roles('admin', 'medecin')
   @Put('patients/:patientId/tooth-chart')
   @ApiOperation({ summary: "Modifier l'état d'une dent" })
   updateTooth(
@@ -94,6 +103,9 @@ export class TreatmentsController {
     );
   }
 
+  // Caisse : accessible à toute l'équipe (assistante/réception/comptable
+  // inclus), même si le reste du dossier soins ne l'est pas.
+  @Roles('admin', 'medecin', 'assistante', 'reception', 'comptable')
   @Patch('treatments/acts/:actId/payment')
   @ApiOperation({ summary: 'Enregistrer un paiement sur un acte' })
   recordPayment(

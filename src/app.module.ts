@@ -25,6 +25,7 @@ import { SmsModule } from './sms/sms.module';
 import { AdminModule } from './admin/admin.module';
 import { DocumentsModule } from './documents/documents.module';
 import { CabinetModule } from './cabinet/cabinet.module';
+import { TeamModule } from './team/team.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { CabinetModule } from './cabinet/cabinet.module';
     AdminModule,
     DocumentsModule,
     CabinetModule,
+    TeamModule,
   ],
   providers: [
     // Enregistré globalement pour éviter de dupliquer @UseGuards(RolesGuard)

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { CalendarEventsService } from './calendar-events.service';
 import {
@@ -23,7 +24,9 @@ import {
 // Blocs d'agenda libres (pause, réunion, blocage de créneau...) sans lien
 // avec un dossier patient — voir le commentaire sur le modèle CalendarEvent
 // dans schema.prisma. Accès partagé admin+médecin comme pour les
-// rendez-vous (pas de @Roles ici), aucune restriction ajoutée.
+// rendez-vous. Équipe & rôles (2026-09-29) : écriture ouverte à
+// assistante/réception, lecture seule pour comptable (mêmes règles que
+// les rendez-vous).
 @ApiTags('Agenda — Événements')
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
@@ -31,6 +34,7 @@ import {
 export class CalendarEventsController {
   constructor(private calendarEventsService: CalendarEventsService) {}
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Post()
   @ApiOperation({ summary: "Créer un événement d'agenda sans patient" })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreateCalendarEventDto) {
@@ -48,6 +52,7 @@ export class CalendarEventsController {
     return this.calendarEventsService.findOne(user.cabinetId, id);
   }
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Patch(':id')
   update(
     @CurrentUser() user: CurrentUserType,
@@ -57,6 +62,7 @@ export class CalendarEventsController {
     return this.calendarEventsService.update(user.cabinetId, id, dto);
   }
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Delete(':id')
   delete(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
     return this.calendarEventsService.delete(user.cabinetId, id);

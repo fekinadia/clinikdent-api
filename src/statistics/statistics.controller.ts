@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { StatisticsService } from './statistics.service';
 
@@ -11,6 +12,8 @@ import { StatisticsService } from './statistics.service';
 export class StatisticsController {
   constructor(private statisticsService: StatisticsService) {}
 
+  // Équipe & rôles (2026-09-29) : comptable ajouté, assistante/réception exclues.
+  @Roles('admin', 'medecin', 'comptable')
   @Get('overview')
   @ApiOperation({
     summary:
@@ -24,6 +27,7 @@ export class StatisticsController {
 
   // STEP 4 — alimente AutomationOverviewPage (No-shows / En attente /
   // Récupérés / Perdus), à la place du placeholder précédent.
+  @Roles('admin', 'medecin', 'comptable')
   @Get('automation-overview')
   @ApiOperation({
     summary: "Vue d'ensemble de l'automatisation no-show (compteurs cumulés du cabinet)",

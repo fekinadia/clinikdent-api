@@ -3,8 +3,15 @@ import { SetMetadata } from '@nestjs/common';
 /**
  * Rôles existants côté cabinet. Ne pas en ajouter d'autres sans décision
  * produit explicite — voir l'audit du 2026-09-05.
+ *
+ * Extension du 2026-09-29 (Phase 2 "Équipe & rôles") : assistante,
+ * reception, comptable — voir la matrice de droits validée par Nadia dans
+ * claude/roadmap-parite-cabinet-care-2026-09-26.md. `maxPraticiens` (plan
+ * d'abonnement) ne compte que le rôle 'medecin', inchangé par cet ajout.
  */
-export type Role = 'admin' | 'medecin';
+export type Role = 'admin' | 'medecin' | 'assistante' | 'reception' | 'comptable';
+
+export const ALL_ROLES: Role[] = ['admin', 'medecin', 'assistante', 'reception', 'comptable'];
 
 export const ROLES_KEY = 'roles';
 

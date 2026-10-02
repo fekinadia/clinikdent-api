@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { AppointmentsService } from './appointments.service';
 import {
@@ -29,6 +30,9 @@ import {
 export class AppointmentsController {
   constructor(private appointmentsService: AppointmentsService) {}
 
+  // Équipe & rôles (2026-09-29) : agenda/salle d'attente modifiable par
+  // assistante/réception, lecture seule pour comptable.
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Post()
   @ApiOperation({ summary: 'Créer un rendez-vous (avec détection de conflits)' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreateAppointmentDto) {
@@ -52,6 +56,7 @@ export class AppointmentsController {
     return this.appointmentsService.findOne(user.cabinetId, id);
   }
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Patch(':id')
   update(
     @CurrentUser() user: CurrentUserType,
@@ -68,6 +73,7 @@ export class AppointmentsController {
   // STEP 4 — endpoint dédié plutôt que de compter sur le frontend pour
   // envoyer le bon PATCH générique : validation métier (RDV pas déjà
   // résolu), idempotence garantie côté serveur, audit systématique.
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Post(':id/no-show')
   @ApiOperation({ summary: 'Marquer un rendez-vous comme no-show (idempotent)' })
   markNoShow(
@@ -81,6 +87,7 @@ export class AppointmentsController {
     });
   }
 
+  @Roles('admin', 'medecin', 'assistante', 'reception')
   @Delete(':id')
   delete(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
     return this.appointmentsService.delete(user.cabinetId, id);

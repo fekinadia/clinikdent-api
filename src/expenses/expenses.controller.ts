@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
@@ -21,7 +22,9 @@ import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 // Dépenses du cabinet (loyer, salaires, fournitures, etc.) : lecture ET
 // mutations partagées admin + médecin (choix explicite de Nadia le
 // 2026-09-16 — un médecin doit pouvoir enregistrer une dépense depuis son
-// propre compte au quotidien, pas seulement un compte admin).
+// propre compte au quotidien, pas seulement un compte admin). Équipe &
+// rôles (2026-09-29) : comptable ajouté (matrice "Facturation, dépenses,
+// statistiques"), assistante/réception exclues.
 @ApiTags('Dépenses')
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
@@ -29,6 +32,7 @@ import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 export class ExpensesController {
   constructor(private expensesService: ExpensesService) {}
 
+  @Roles('admin', 'medecin', 'comptable')
   @Get()
   @ApiOperation({ summary: 'Lister les dépenses du cabinet (filtrable par date et catégorie)' })
   findAll(
@@ -40,6 +44,7 @@ export class ExpensesController {
     return this.expensesService.findAll(user.cabinetId, from, to, categorie);
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Get('overview')
   @ApiOperation({ summary: 'Total des dépenses sur une période + répartition par catégorie' })
   overview(@CurrentUser() user: CurrentUserType, @Query('months') months?: string) {
@@ -48,6 +53,7 @@ export class ExpensesController {
     return this.expensesService.getOverview(user.cabinetId, safeMonths);
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Post()
   @ApiOperation({ summary: 'Enregistrer une nouvelle dépense' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreateExpenseDto, @Req() req: Request) {
@@ -57,6 +63,7 @@ export class ExpensesController {
     });
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Patch(':id')
   @ApiOperation({ summary: 'Modifier une dépense' })
   update(
@@ -71,6 +78,7 @@ export class ExpensesController {
     });
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Delete(':id')
   @ApiOperation({ summary: 'Supprimer une dépense' })
   delete(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number, @Req() req: Request) {

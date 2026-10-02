@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { FinanceService } from './finance.service';
 import { CaisseQueryDto, ChequesQueryDto, SetChequeEncaisseDto } from './dto/caisse.dto';
@@ -12,6 +13,9 @@ import { CaisseQueryDto, ChequesQueryDto, SetChequeEncaisseDto } from './dto/cai
 export class FinanceController {
   constructor(private financeService: FinanceService) {}
 
+  // Équipe & rôles (2026-09-29) : facturation (overview/impayés/historique)
+  // réservée à admin/médecin/comptable — assistante/réception exclues.
+  @Roles('admin', 'medecin', 'comptable')
   @Get('overview')
   @ApiOperation({
     summary:
@@ -23,12 +27,14 @@ export class FinanceController {
     return this.financeService.getOverview(user.cabinetId, safeMonths);
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Get('unpaid')
   @ApiOperation({ summary: 'Liste des patients ayant un reste dû, triée par montant décroissant' })
   unpaid(@CurrentUser() user: CurrentUserType) {
     return this.financeService.listUnpaid(user.cabinetId);
   }
 
+  @Roles('admin', 'medecin', 'comptable')
   @Get('payments')
   @ApiOperation({ summary: 'Historique des encaissements (paiements reçus)' })
   payments(
@@ -46,6 +52,8 @@ export class FinanceController {
   }
 
   // ==== CAISSE & CHÈQUES (2026-09-27) ====
+  // Ouvert à toute l'équipe (assistante/réception/comptable inclus) —
+  // contrairement à la facturation ci-dessus.
 
   @Get('caisse')
   @ApiOperation({ summary: "Journal de caisse d'une journée (totaux par mode de règlement)" })
