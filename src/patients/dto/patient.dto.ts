@@ -144,4 +144,23 @@ export class ListPatientsQueryDto {
   @IsOptional()
   @IsString()
   estProspect?: string;
+
+  // Tri de la liste (2026-10-02) : par défaut nom/prénom alphabétique,
+  // mais on permet aussi de trier par numéro de dossier (demande "trie
+  // par nombre de fiche" — la numérotation étant globalement
+  // chronologique, trier par N° de dossier revient à trier par ordre de
+  // création de la fiche).
+  @ApiPropertyOptional({
+    enum: ['nom', 'numeroDossier'],
+    default: 'nom',
+    description: 'Champ de tri : "nom" (alphabétique) ou "numeroDossier".',
+  })
+  @IsOptional()
+  @IsIn(['nom', 'numeroDossier'])
+  sortBy?: 'nom' | 'numeroDossier';
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 }
