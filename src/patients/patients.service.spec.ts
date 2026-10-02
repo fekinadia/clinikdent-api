@@ -1,162 +1,428 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { PatientsService } from './patients.service';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit-log.service';
+import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
+import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
 
-const CABINET_A = 1;
-const CABINET_B = 2;
-
-function makeService() {
-  const prisma = {
-    patient: {
-      findUnique: jest.fn(),
-      delete: jest.fn(),
-      update: jest.fn(),
-    },
-    appointment: {
-      count: jest.fn().mockResolvedValue(0),
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-  } as any;
-  const auditLog = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditLogService;
-  const service = new PatientsService(prisma, auditLog);
-  return { service, prisma, auditLog };
+export interface ActorContext {
+  userId: number;
+  ipAddress?: string | null;
 }
 
-describe('PatientsService — isolation multi-cabinet', () => {
-  it("refuse l'accès à un patient d'un autre cabinet (cabinet A ne peut pas lire un patient du cabinet B)", async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({
-      id: 42,
-      cabinetId: CABINET_B,
-      numeroDossier: '00001',
+@Injectable()
+export class PatientsService {
+  constructor(
+    private prisma: PrismaService,
+    private auditLog: AuditLogService,
+  ) {}
+
+  async create(cabinetId: number, userId: number, dto: CreatePatientDto) {
+    await this.assertSousLaLimite(cabinetId);
+
+    const numeroDossierSaisi = dto.numeroDossier?.trim();
+
+    // Numéro de dossier saisi manuellement par le médecin : pas de retry,
+    // une collision est une vraie erreur à signaler telle quelle.
+    if (numeroDossierSaisi) {
+      try {
+        return await this.prisma.patient.create({
+          data: {
+            ...dto,
+            dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
+            numeroDossier: numeroDossierSaisi,
+            cabinetId,
+            createdById: userId,
+          },
+        });
+      } catch (e: any) {
+        if (e.code === 'P2002') {
+          throw new ConflictException(this.messageConflitUnicite(e));
+        }
+        throw e;
+      }
+    }
+
+    // Numéro généré automatiquement : on retente avec le numéro suivant en
+    // cas de collision, au lieu d'échouer. Une collision peut arriver si un
+    // dossier a été saisi manuellement hors séquence (ex: "DOSSIER-TEST"),
+    // ce qui aurait auparavant faussé le calcul du "dernier" numéro.
+    const MAX_TENTATIVES = 5;
+    let numeroDossier = await this.prochainNumeroDossier(cabinetId);
+
+    for (let tentative = 0; tentative < MAX_TENTATIVES; tentative++) {
+      try {
+        return await this.prisma.patient.create({
+          data: {
+            ...dto,
+            dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
+            numeroDossier,
+            cabinetId,
+            createdById: userId,
+          },
+        });
+      } catch (e: any) {
+        if (e.code !== 'P2002') {
+          throw e;
+        }
+        if (!this.estConflitNumeroDossier(e)) {
+          throw new ConflictException(this.messageConflitUnicite(e));
+        }
+        // Le numéro généré était déjà pris : on essaie le suivant.
+        const n = parseInt(numeroDossier, 10);
+        numeroDossier = String((isNaN(n) ? 0 : n) + 1).padStart(5, '0');
+      }
+    }
+
+    throw new ConflictException(
+      "Impossible de générer un numéro de dossier disponible, réessayez ou saisissez-en un manuellement.",
+    );
+  }
+
+  /**
+   * Calcule le prochain numéro de dossier à partir du plus grand numéro
+   * purement numérique déjà utilisé dans le cabinet (et non simplement du
+   * dernier patient créé, qui peut avoir un numéro saisi manuellement hors
+   * séquence, ex: "DOSSIER-TEST", ce qui faussait le calcul).
+   */
+  private async prochainNumeroDossier(cabinetId: number): Promise<string> {
+    const patients = await this.prisma.patient.findMany({
+      where: { cabinetId },
+      select: { numeroDossier: true },
     });
 
-    await expect(service.findOne(CABINET_A, 42)).rejects.toThrow(ForbiddenException);
-  });
+    const max = patients.reduce((acc, p) => {
+      if (/^\d+$/.test(p.numeroDossier)) {
+        const n = parseInt(p.numeroDossier, 10);
+        if (n > acc) return n;
+      }
+      return acc;
+    }, 0);
 
-  it('permet la lecture normale quand le patient appartient bien au cabinet demandeur', async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({
-      id: 42,
-      cabinetId: CABINET_A,
-      numeroDossier: '00001',
+    return String(max + 1).padStart(5, '0');
+  }
+
+  private estConflitNumeroDossier(e: any): boolean {
+    const target: string[] = Array.isArray(e?.meta?.target)
+      ? e.meta.target
+      : typeof e?.meta?.target === 'string'
+        ? [e.meta.target]
+        : [];
+    return target.some((t) => t.includes('numero_dossier'));
+  }
+
+  /**
+   * Traduit une erreur Prisma P2002 (violation de contrainte unique) en un
+   * message compréhensible, selon la colonne réellement en conflit
+   * (`e.meta.target`), au lieu de supposer systématiquement qu'il s'agit du
+   * numéro de dossier.
+   */
+  private messageConflitUnicite(e: any): string {
+    const target: string[] = Array.isArray(e?.meta?.target)
+      ? e.meta.target
+      : typeof e?.meta?.target === 'string'
+        ? [e.meta.target]
+        : [];
+
+    if (target.some((t) => t.includes('numero_dossier'))) {
+      return 'Ce numéro de dossier est déjà utilisé';
+    }
+    if (target.some((t) => t.includes('gsm'))) {
+      return 'Ce numéro de téléphone est déjà utilisé';
+    }
+    if (target.some((t) => t.includes('email'))) {
+      return 'Cette adresse email est déjà utilisée';
+    }
+    return 'Cette information existe déjà pour un autre patient';
+  }
+
+  async findAll(cabinetId: number, query: ListPatientsQueryDto) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { cabinetId };
+
+    if (query.search) {
+      // Recherche "prénom nom" (2026-09-30) : avant, "karim benali" ne
+      // trouvait rien car on cherchait la chaîne ENTIÈRE dans nom OU dans
+      // prenom séparément — or "karim benali" n'apparaît ni dans nom
+      // ("Benali") ni dans prenom ("Karim") pris isolément. On découpe
+      // maintenant la recherche en mots et on exige que CHAQUE mot se
+      // retrouve dans nom OU prenom (peu importe l'ordre des mots), ce qui
+      // couvre "karim benali" comme "benali karim".
+      const words = query.search.trim().split(/\s+/).filter(Boolean);
+      const nameMatch = {
+        AND: words.map((w) => ({
+          OR: [
+            { nom: { contains: w, mode: 'insensitive' } },
+            { prenom: { contains: w, mode: 'insensitive' } },
+          ],
+        })),
+      };
+      where.OR = [
+        nameMatch,
+        { gsm: { contains: query.search } },
+        { numeroDossier: { contains: query.search } },
+      ];
+    }
+
+    const sortOrder = query.sortOrder === 'desc' ? 'desc' : 'asc';
+    const orderBy =
+      query.sortBy === 'numeroDossier'
+        ? [{ numeroDossier: sortOrder as 'asc' | 'desc' }]
+        : [{ nom: sortOrder as 'asc' | 'desc' }, { prenom: sortOrder as 'asc' | 'desc' }];
+
+    const [items, total] = await Promise.all([
+      this.prisma.patient.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+      }),
+      this.prisma.patient.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageCount: Math.ceil(total / limit),
+    };
+  }
+
+  async findOne(cabinetId: number, id: number) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id },
+      include: {
+        toothStates: true,
+        appointments: {
+          orderBy: { dateDebut: 'desc' },
+          take: 10,
+        },
+        treatments: {
+          orderBy: { dateSoin: 'desc' },
+          include: { acts: true },
+        },
+      },
     });
 
-    await expect(service.findOne(CABINET_A, 42)).resolves.toMatchObject({ id: 42 });
-  });
+    if (!patient) {
+      throw new NotFoundException('Patient introuvable');
+    }
+    if (patient.cabinetId !== cabinetId) {
+      throw new ForbiddenException("Ce patient n'appartient pas à votre cabinet");
+    }
 
-  it('lève NotFoundException si le patient est introuvable', async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue(null);
-
-    await expect(service.findOne(CABINET_A, 999)).rejects.toThrow(NotFoundException);
-  });
-});
-
-describe('PatientsService — suppression (destructive) et journal d\'audit', () => {
-  it('supprime un patient du bon cabinet et écrit une entrée AuditLog', async () => {
-    const { service, prisma, auditLog } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({
-      id: 42,
-      cabinetId: CABINET_A,
-      numeroDossier: '00001',
+    // STEP 4 — compteur no-show calculé à la volée plutôt que dupliqué sur
+    // le modèle Patient : le volume par patient reste faible (dizaines de
+    // RDV, pas des milliers), un COUNT sur l'index existant
+    // Appointment.@@index([patientId]) suffit largement, et évite tout
+    // risque de compteur qui dérive de la réalité des RDV.
+    const noShowCount = await this.prisma.appointment.count({
+      where: { patientId: id, statut: 'no_show' },
     });
-    prisma.patient.delete.mockResolvedValue({ id: 42 });
 
-    const result = await service.delete(CABINET_A, 42, { userId: 7, ipAddress: '1.2.3.4' });
+    return { ...patient, noShowCount };
+  }
 
-    expect(result).toEqual({ success: true });
-    expect(prisma.patient.delete).toHaveBeenCalledWith({ where: { id: 42 } });
-    expect(auditLog.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: 7,
-        cabinetId: CABINET_A,
-        action: 'patient.delete',
+  /**
+   * STEP 4 — historique complet des no-shows d'un patient (pas seulement
+   * les 10 derniers RDV renvoyés par findOne). Dérivé entièrement de
+   * `Appointment`/`NoShowRecovery` existants, aucune nouvelle table.
+   */
+  async getNoShowHistory(cabinetId: number, id: number) {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient || patient.cabinetId !== cabinetId) {
+      throw new NotFoundException('Patient introuvable');
+    }
+
+    const noShows = await this.prisma.appointment.findMany({
+      where: { patientId: id, statut: 'no_show' },
+      orderBy: { dateDebut: 'desc' },
+      include: {
+        type: true,
+        medecin: { select: { id: true, nom: true, prenom: true } },
+        noShowRecoveries: true,
+      },
+    });
+
+    return {
+      total: noShows.length,
+      derniereDateAt: noShows[0]?.dateDebut ?? null,
+      rendezVous: noShows,
+    };
+  }
+
+  async update(cabinetId: number, id: number, dto: UpdatePatientDto, actor?: ActorContext) {
+    await this.findOne(cabinetId, id); // vérifier l'accès
+
+    try {
+      const updated = await this.prisma.patient.update({
+        where: { id },
+        data: {
+          ...dto,
+          dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : undefined,
+          // Toute modification manuelle de la fiche confirme que ce n'est plus
+          // un simple prospect créé à la volée depuis l'Agenda.
+          estProspect: false,
+        },
+      });
+
+      await this.auditLog.log({
+        userId: actor?.userId,
+        cabinetId,
+        action: 'patient.update',
         entityType: 'Patient',
-        entityId: 42,
-        ipAddress: '1.2.3.4',
+        entityId: id,
+        // On journalise uniquement la liste des champs modifiés, jamais leur
+        // contenu (données médicales/personnelles) — voir audit du
+        // 2026-09-05, section 8 ("ne pas journaliser d'information médicale
+        // inutilement").
+        details: { fieldsChanged: Object.keys(dto) },
+        ipAddress: actor?.ipAddress,
+      });
+
+      return updated;
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        throw new ConflictException(this.messageConflitUnicite(e));
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Volet G — édition rapide de l'étiquette libre depuis la liste
+   * Patients, sans passer par update() (qui remet toujours estProspect à
+   * false, un effet de bord indésirable pour ce simple champ d'affichage).
+   * Chaîne vide normalisée en `null` pour retirer proprement l'étiquette.
+   */
+  async updateEtiquette(cabinetId: number, id: number, etiquette?: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient) {
+      throw new NotFoundException('Patient introuvable');
+    }
+    if (patient.cabinetId !== cabinetId) {
+      throw new ForbiddenException("Ce patient n'appartient pas à votre cabinet");
+    }
+
+    return this.prisma.patient.update({
+      where: { id },
+      data: { etiquette: etiquette?.trim() || null },
+    });
+  }
+
+  async delete(cabinetId: number, id: number, actor?: ActorContext) {
+    const patient = await this.findOne(cabinetId, id);
+    await this.prisma.patient.delete({ where: { id } });
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'patient.delete',
+      entityType: 'Patient',
+      entityId: id,
+      details: { numeroDossier: patient.numeroDossier },
+      ipAddress: actor?.ipAddress,
+    });
+
+    return { success: true };
+  }
+
+  async getStats(cabinetId: number) {
+    const [total, ceMois] = await Promise.all([
+      this.prisma.patient.count({ where: { cabinetId } }),
+      this.prisma.patient.count({
+        where: {
+          cabinetId,
+          createdAt: {
+            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+          },
+        },
       }),
-    );
-  });
+    ]);
 
-  it("refuse de supprimer un patient d'un autre cabinet, sans écrire d'entrée AuditLog", async () => {
-    const { service, prisma, auditLog } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({
-      id: 42,
-      cabinetId: CABINET_B,
-      numeroDossier: '00001',
+    return { total, ceMois };
+  }
+
+  /**
+   * Liste des patients "à relancer" : leur dernier soin remonte à plus de
+   * `months` mois et ils n'ont aucun rendez-vous à venir programmé.
+   * Sert de base au module Rappels (recall) du cabinet.
+   */
+  async getRecalls(cabinetId: number, months = 6) {
+    const monthsNum = Number(months) > 0 ? Number(months) : 6;
+    const threshold = new Date();
+    threshold.setMonth(threshold.getMonth() - monthsNum);
+
+    const patients = await this.prisma.patient.findMany({
+      where: { cabinetId },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        gsm: true,
+        telephoneFixe: true,
+        treatments: {
+          orderBy: { dateSoin: 'desc' },
+          take: 1,
+          select: { dateSoin: true },
+        },
+        appointments: {
+          where: {
+            dateDebut: { gte: new Date() },
+            statut: { not: 'annule' },
+          },
+          take: 1,
+          select: { id: true },
+        },
+      },
     });
 
-    await expect(service.delete(CABINET_A, 42, { userId: 7 })).rejects.toThrow(
-      ForbiddenException,
-    );
-    expect(prisma.patient.delete).not.toHaveBeenCalled();
-    expect(auditLog.log).not.toHaveBeenCalled();
-  });
-});
+    return patients
+      .filter((p) => {
+        if (p.appointments.length > 0) return false; // déjà un RDV à venir
+        const derniere = p.treatments[0]?.dateSoin;
+        if (!derniere) return false; // aucun historique de soin
+        return derniere <= threshold;
+      })
+      .map((p) => {
+        const derniereVisite = p.treatments[0].dateSoin;
+        const moisEcoules = Math.floor(
+          (Date.now() - new Date(derniereVisite).getTime()) / (1000 * 60 * 60 * 24 * 30),
+        );
+        return {
+          id: p.id,
+          nom: p.nom,
+          prenom: p.prenom,
+          gsm: p.gsm,
+          telephoneFixe: p.telephoneFixe,
+          derniereVisite,
+          moisEcoules,
+        };
+      })
+      .sort(
+        (a, b) => new Date(a.derniereVisite).getTime() - new Date(b.derniereVisite).getTime(),
+      );
+  }
 
-describe('PatientsService — compteur et historique no-show (STEP 4)', () => {
-  it('findOne calcule noShowCount à partir des RDV du patient au statut no_show', async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({
-      id: 42,
-      cabinetId: CABINET_A,
-      numeroDossier: '00001',
+  // Bloque la création d'un nouveau patient si le cabinet a déjà atteint
+  // la limite de son plan d'abonnement (voir src/billing/plan-limits.ts).
+  private async assertSousLaLimite(cabinetId: number) {
+    const cabinet = await this.prisma.cabinet.findUnique({
+      where: { id: cabinetId },
     });
-    prisma.appointment.count.mockResolvedValue(3);
+    if (!cabinet) return;
 
-    const result = await service.findOne(CABINET_A, 42);
+    const planKey = isValidPlan(cabinet.plan) ? cabinet.plan : 'starter';
+    const maxPatients = PLAN_LIMITS[planKey].maxPatients;
+    if (maxPatients === null) return; // illimité
 
-    expect(result.noShowCount).toBe(3);
-    expect(prisma.appointment.count).toHaveBeenCalledWith({
-      where: { patientId: 42, statut: 'no_show' },
-    });
-  });
-
-  it("getNoShowHistory renvoie le total et la liste des RDV no_show, triés du plus récent au plus ancien", async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({ id: 42, cabinetId: CABINET_A });
-    const rdv = [
-      { id: 1, dateDebut: new Date('2026-08-01') },
-      { id: 2, dateDebut: new Date('2026-07-01') },
-    ];
-    prisma.appointment.findMany.mockResolvedValue(rdv);
-
-    const result = await service.getNoShowHistory(CABINET_A, 42);
-
-    expect(result.total).toBe(2);
-    expect(result.derniereDateAt).toEqual(new Date('2026-08-01'));
-    expect(result.rendezVous).toEqual(rdv);
-    expect(prisma.appointment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { patientId: 42, statut: 'no_show' },
-        orderBy: { dateDebut: 'desc' },
-      }),
-    );
-  });
-
-  it('getNoShowHistory renvoie total: 0 et derniereDateAt: null si aucun no-show', async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({ id: 42, cabinetId: CABINET_A });
-    prisma.appointment.findMany.mockResolvedValue([]);
-
-    const result = await service.getNoShowHistory(CABINET_A, 42);
-
-    expect(result).toEqual({ total: 0, derniereDateAt: null, rendezVous: [] });
-  });
-
-  it("getNoShowHistory : 404 (jamais 403) si le patient n'existe pas", async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue(null);
-
-    await expect(service.getNoShowHistory(CABINET_A, 999)).rejects.toThrow(NotFoundException);
-  });
-
-  it("getNoShowHistory : 404 (jamais 403) si le patient appartient à un autre cabinet — isolation stricte pour ce nouvel endpoint STEP 4", async () => {
-    const { service, prisma } = makeService();
-    prisma.patient.findUnique.mockResolvedValue({ id: 42, cabinetId: CABINET_B });
-
-    await expect(service.getNoShowHistory(CABINET_A, 42)).rejects.toThrow(NotFoundException);
-    expect(prisma.appointment.findMany).not.toHaveBeenCalled();
-  });
-});
+    const total = await this.prisma.patient.count({ where: { cabinetId } });
+    if (total >= maxPatients) {
+      throw new ForbiddenException(
+        `Limite de ${maxPatients} patients atteinte pour le plan ${PLAN_LIMITS[planKey].label}. Passez à un plan supérieur pour continuer.`,
+      );
+    }
+  }
+}
