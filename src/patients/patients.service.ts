@@ -166,12 +166,18 @@ export class PatientsService {
       ];
     }
 
+    const sortOrder = query.sortOrder === 'desc' ? 'desc' : 'asc';
+    const orderBy =
+      query.sortBy === 'numeroDossier'
+        ? [{ numeroDossier: sortOrder as 'asc' | 'desc' }]
+        : [{ nom: sortOrder as 'asc' | 'desc' }, { prenom: sortOrder as 'asc' | 'desc' }];
+
     const [items, total] = await Promise.all([
       this.prisma.patient.findMany({
         where,
         skip,
         take: limit,
-        orderBy: [{ nom: 'asc' }, { prenom: 'asc' }],
+        orderBy,
       }),
       this.prisma.patient.count({ where }),
     ]);
