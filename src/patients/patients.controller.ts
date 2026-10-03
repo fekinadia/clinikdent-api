@@ -74,7 +74,10 @@ export class PatientsController {
     return this.patientsService.getNoShowHistory(user.cabinetId, id);
   }
 
-  @Roles('admin', 'medecin', 'assistante', 'reception')
+  // Pas de @Roles() ici (2026-10-03, à la demande de Nadia) : l'erreur
+  // "droits nécessaires" bloquait l'édition même pour des comptes censés
+  // être autorisés — décision : tout utilisateur authentifié du cabinet
+  // peut modifier une fiche patient, sans restriction de rôle.
   @Patch(':id')
   @ApiOperation({ summary: 'Modifier un patient' })
   update(
@@ -91,7 +94,7 @@ export class PatientsController {
 
   // Volet G — édition rapide de l'étiquette depuis la liste Patients, sans
   // passer par le PATCH générique (qui remet toujours estProspect à false).
-  @Roles('admin', 'medecin', 'assistante', 'reception')
+  // Même décision que ci-dessus (2026-10-03) : pas de restriction de rôle.
   @Patch(':id/etiquette')
   @ApiOperation({ summary: "Définir ou retirer l'étiquette libre d'un patient" })
   updateEtiquette(
