@@ -34,16 +34,16 @@ const READ_HANDLERS = [
 ] as const;
 
 describe('ActsController — matrice RBAC', () => {
-  it.each(MUTATION_HANDLERS)('admin peut appeler %s', (_name, handler) => {
-    expect(guard.canActivate(makeContext(handler, admin))).toBe(true);
+  it.each(MUTATION_HANDLERS)('admin peut appeler %s', async (_name, handler) => {
+    await expect(guard.canActivate(makeContext(handler, admin))).resolves.toBe(true);
   });
 
-  it.each(MUTATION_HANDLERS)('medecin reçoit 403 sur %s', (_name, handler) => {
-    expect(() => guard.canActivate(makeContext(handler, medecin))).toThrow(ForbiddenException);
+  it.each(MUTATION_HANDLERS)('medecin reçoit 403 sur %s', async (_name, handler) => {
+    await expect(guard.canActivate(makeContext(handler, medecin))).rejects.toThrow(ForbiddenException);
   });
 
-  it.each(READ_HANDLERS)('admin et medecin peuvent tous les deux appeler %s', (_name, handler) => {
-    expect(guard.canActivate(makeContext(handler, admin))).toBe(true);
-    expect(guard.canActivate(makeContext(handler, medecin))).toBe(true);
+  it.each(READ_HANDLERS)('admin et medecin peuvent tous les deux appeler %s', async (_name, handler) => {
+    await expect(guard.canActivate(makeContext(handler, admin))).resolves.toBe(true);
+    await expect(guard.canActivate(makeContext(handler, medecin))).resolves.toBe(true);
   });
 });

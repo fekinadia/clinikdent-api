@@ -31,10 +31,9 @@ import {
 export class PatientsController {
   constructor(private patientsService: PatientsService) {}
 
-  // Équipe & rôles (2026-09-29) : identité patient modifiable par
-  // assistante/réception, en lecture seule pour comptable (matrice validée
-  // par Nadia, roadmap parité Cabinet Care).
-  @Roles('admin', 'medecin', 'assistante', 'reception')
+  // Pas de @Roles() ici (2026-10-03, même décision que pour la modification
+  // ci-dessous) : tout utilisateur authentifié du cabinet peut créer un
+  // patient, sans restriction de rôle.
   @Post()
   @ApiOperation({ summary: 'Créer un nouveau patient' })
   create(@CurrentUser() user: CurrentUserType, @Body() dto: CreatePatientDto) {

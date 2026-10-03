@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
 import { ROLES_KEY, Role } from './roles.decorator';
 
 /**
@@ -28,7 +29,7 @@ import { ROLES_KEY, Role } from './roles.decorator';
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.getAllAndOverride<Role[] | undefined>(
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
@@ -39,6 +40,18 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
+
+    // Correctif 2026-10-03 : un garde global (APP_GUARD) s'exécute AVANT les
+    // gardes déclarés sur le contrôleur (@UseGuards(JwtGuard)). request.user
+    // n'était donc jamais rempli ici → 403 pour tout le monde, admin compris,
+    // sur chaque route portant @Roles. On authentifie nous-mêmes le jeton
+    // (même stratégie 'jwt', même relecture fraîche en base) avant de
+    // vérifier le rôle ; un jeton absent/invalide donne toujours un 401.
+    if (!request.user) {
+      const jwtGuard = new (AuthGuard('jwt'))();
+      await jwtGuard.canActivate(context);
+    }
+
     const user = request.user as { role?: Role } | undefined;
 
     if (!user?.role || !requiredRoles.includes(user.role)) {
