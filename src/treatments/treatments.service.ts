@@ -371,6 +371,117 @@ export class TreatmentsService {
     return updatedAct;
   }
 
+  // ==== SUPPRESSIONS (2026-10-07, demandé par Nadia) ====
+
+  /**
+   * Supprime un acte de l'historique des soins, avec ses encaissements
+   * (lignes Payment) — elles disparaissent donc aussi de Caisse & chèques et
+   * des totaux encaissés. Si c'était le dernier acte de la séance, la séance
+   * elle-même est supprimée (sinon il resterait une ligne vide).
+   * Les paiements sont supprimés explicitement avant l'acte : la clé
+   * étrangère payments.treatment_act_id n'a pas de ON DELETE CASCADE.
+   */
+  async deleteAct(cabinetId: number, actId: number, actor?: ActorContext) {
+    const act = await this.prisma.treatmentAct.findUnique({
+      where: { id: actId },
+      include: { treatment: { include: { patient: true } }, payments: true },
+    });
+    if (!act || act.treatment.patient.cabinetId !== cabinetId) {
+      throw new NotFoundException('Acte introuvable');
+    }
+
+    const autresActes = await this.prisma.treatmentAct.count({
+      where: { treatmentId: act.treatmentId, id: { not: actId } },
+    });
+    const seanceSupprimee = autresActes === 0;
+
+    await this.prisma.$transaction([
+      this.prisma.payment.deleteMany({ where: { treatmentActId: actId } }),
+      this.prisma.treatmentAct.delete({ where: { id: actId } }),
+      ...(seanceSupprimee
+        ? [this.prisma.treatment.delete({ where: { id: act.treatmentId } })]
+        : []),
+    ]);
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'treatment_act.deleted',
+      entityType: 'TreatmentAct',
+      entityId: actId,
+      details: {
+        treatmentId: act.treatmentId,
+        patientId: act.treatment.patientId,
+        libelle: act.libelle,
+        dents: act.dents,
+        cout: Number(act.cout),
+        montantRecu: Number(act.montantRecu),
+        paiementsSupprimes: act.payments.map((p) => ({
+          id: p.id,
+          montant: Number(p.montant),
+          modeReglement: p.modeReglement,
+          datePaiement: p.datePaiement,
+        })),
+        seanceSupprimee,
+      },
+      ipAddress: actor?.ipAddress,
+    });
+
+    return { success: true, seanceSupprimee };
+  }
+
+  /**
+   * Supprime un seul encaissement (ligne « ↳ Encaissement ») et retire son
+   * montant du « Payé » de l'acte concerné — le reste dû remonte d'autant.
+   */
+  async deletePayment(cabinetId: number, paymentId: number, actor?: ActorContext) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { patient: true, treatmentAct: true },
+    });
+    if (!payment || payment.patient.cabinetId !== cabinetId) {
+      throw new NotFoundException('Encaissement introuvable');
+    }
+
+    const montant = Number(payment.montant);
+    const ancienMontantRecu = payment.treatmentAct ? Number(payment.treatmentAct.montantRecu) : null;
+    const nouveauMontantRecu =
+      ancienMontantRecu !== null ? Math.max(0, ancienMontantRecu - montant) : null;
+
+    await this.prisma.$transaction([
+      this.prisma.payment.delete({ where: { id: paymentId } }),
+      ...(payment.treatmentActId && nouveauMontantRecu !== null
+        ? [
+            this.prisma.treatmentAct.update({
+              where: { id: payment.treatmentActId },
+              data: { montantRecu: nouveauMontantRecu },
+            }),
+          ]
+        : []),
+    ]);
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId,
+      action: 'payment.deleted',
+      entityType: 'Payment',
+      entityId: paymentId,
+      details: {
+        patientId: payment.patientId,
+        treatmentActId: payment.treatmentActId,
+        montant,
+        modeReglement: payment.modeReglement,
+        numeroCheque: payment.numeroCheque,
+        datePaiement: payment.datePaiement,
+        ancienMontantRecu,
+        nouveauMontantRecu,
+      },
+      ipAddress: actor?.ipAddress,
+    });
+
+    return { success: true };
+  }
+
   // ==== SCHÉMA DENTAIRE ====
 
   async getToothChart(cabinetId: number, patientId: number) {

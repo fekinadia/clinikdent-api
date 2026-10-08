@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -114,5 +115,34 @@ export class TreatmentsController {
     @Body() dto: RecordPaymentDto,
   ) {
     return this.treatmentsService.recordPayment(user.cabinetId, user.userId, actId, dto);
+  }
+
+  // Suppressions (2026-10-07) : mêmes rôles que la modification d'une séance.
+  @Roles('admin', 'medecin')
+  @Delete('treatments/acts/:actId')
+  @ApiOperation({ summary: "Supprimer un acte de l'historique des soins (et ses encaissements)" })
+  deleteAct(
+    @CurrentUser() user: CurrentUserType,
+    @Param('actId', ParseIntPipe) actId: number,
+    @Req() req: Request,
+  ) {
+    return this.treatmentsService.deleteAct(user.cabinetId, actId, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
+
+  @Roles('admin', 'medecin')
+  @Delete('treatments/payments/:paymentId')
+  @ApiOperation({ summary: 'Supprimer un encaissement (le montant est retiré du « Payé » de l\'acte)' })
+  deletePayment(
+    @CurrentUser() user: CurrentUserType,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Req() req: Request,
+  ) {
+    return this.treatmentsService.deletePayment(user.cabinetId, paymentId, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
   }
 }
