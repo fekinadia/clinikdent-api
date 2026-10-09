@@ -39,7 +39,7 @@ export class StatisticsService {
   async getOverview(cabinetId: number, months: number) {
     const { since, keys } = buildMonthRange(months);
 
-    const [totalPatients, newPatients, appointments, payments, treatmentActs] =
+    const [totalPatients, newPatients, appointments, payments, treatmentActs, expenses] =
       await Promise.all([
         this.prisma.patient.count({ where: { cabinetId } }),
         this.prisma.patient.findMany({
@@ -60,6 +60,12 @@ export class StatisticsService {
             treatment: { patient: { cabinetId } },
           },
           select: { libelle: true },
+        }),
+        // Dépenses du cabinet sur la même période (2026-10-09) : affichées à
+        // côté des recettes pour calculer le bénéfice.
+        this.prisma.expense.findMany({
+          where: { cabinetId, dateDepense: { gte: since } },
+          select: { dateDepense: true, montant: true },
         }),
       ]);
 
@@ -120,6 +126,19 @@ export class StatisticsService {
       }
     }
 
+    const depensesParMoisMap = new Map<string, number>();
+    for (const k of keys) depensesParMoisMap.set(k, 0);
+    let totalDepenses = 0;
+    for (const e of expenses) {
+      const montant = Number(e.montant);
+      totalDepenses += montant;
+      const k = monthKey(e.dateDepense);
+      if (depensesParMoisMap.has(k)) {
+        depensesParMoisMap.set(k, (depensesParMoisMap.get(k) || 0) + montant);
+      }
+    }
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
     const actesCount = new Map<string, number>();
     for (const t of treatmentActs) {
       actesCount.set(t.libelle, (actesCount.get(t.libelle) || 0) + 1);
@@ -158,6 +177,18 @@ export class StatisticsService {
         parMois: keys.map((mois) => ({
           mois,
           montant: Math.round((recettesParMoisMap.get(mois) || 0) * 1000) / 1000,
+        })),
+      },
+      depenses: {
+        total: r3(totalDepenses),
+        parMois: keys.map((mois) => ({ mois, montant: r3(depensesParMoisMap.get(mois) || 0) })),
+      },
+      // Bénéfice = encaissé − dépenses, sur la période et mois par mois.
+      benefice: {
+        total: r3(totalRecettes - totalDepenses),
+        parMois: keys.map((mois) => ({
+          mois,
+          montant: r3((recettesParMoisMap.get(mois) || 0) - (depensesParMoisMap.get(mois) || 0)),
         })),
       },
       actesFrequents,

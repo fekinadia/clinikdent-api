@@ -8,6 +8,7 @@ function makeService() {
     appointment: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     payment: { findMany: jest.fn().mockResolvedValue([]) },
     treatmentAct: { findMany: jest.fn().mockResolvedValue([]) },
+    expense: { findMany: jest.fn().mockResolvedValue([]) },
     noShowRecovery: { count: jest.fn().mockResolvedValue(0) },
   } as any;
   const service = new StatisticsService(prisma);
@@ -91,5 +92,25 @@ describe('StatisticsService.getAutomationOverview — compteurs du dashboard aut
     expect(prisma.appointment.count).toHaveBeenCalledWith({
       where: { cabinetId: CABINET_A, statut: 'no_show' },
     });
+  });
+
+  it('ajoute les dépenses et le bénéfice (recettes − dépenses) par mois', async () => {
+    const { service, prisma } = makeService();
+    const now = new Date();
+    const moisCourant = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    prisma.payment.findMany.mockResolvedValue([
+      { datePaiement: now, montant: 300 },
+      { datePaiement: now, montant: 130 },
+    ]);
+    prisma.expense.findMany.mockResolvedValue([{ dateDepense: now, montant: 100.5 }]);
+
+    const res: any = await service.getOverview(1, 1);
+
+    expect(prisma.expense.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ cabinetId: 1 }) }),
+    );
+    expect(res.recettes.total).toBe(430);
+    expect(res.depenses).toEqual({ total: 100.5, parMois: [{ mois: moisCourant, montant: 100.5 }] });
+    expect(res.benefice).toEqual({ total: 329.5, parMois: [{ mois: moisCourant, montant: 329.5 }] });
   });
 });
