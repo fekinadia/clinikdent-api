@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
@@ -7,6 +9,10 @@ export interface ActorContext {
   userId: number;
   ipAddress?: string | null;
 }
+
+// Pièce jointe (2026-10-09) : mêmes limites que les pièces jointes patient.
+const TAILLE_MAX_OCTETS = 15 * 1024 * 1024; // 15 Mo
+const DUREE_URL_SIGNEE = 300; // secondes
 
 function round(n: number): number {
   return Math.round(n * 1000) / 1000;
@@ -23,21 +29,64 @@ function serialize(expense: {
   dateDepense: Date;
   fournisseur: string | null;
   justificatif: string | null;
+  pieceJointeChemin?: string | null;
+  pieceJointeNom?: string | null;
+  pieceJointeMime?: string | null;
   createdById: number | null;
   createdAt: Date;
 }) {
+  // Le chemin interne dans le stockage n'est jamais renvoyé au navigateur :
+  // le fichier s'ouvre uniquement via une URL signée temporaire.
+  const { pieceJointeChemin, ...rest } = expense;
   return {
-    ...expense,
+    ...rest,
     montant: Number(expense.montant),
+    aPieceJointe: !!pieceJointeChemin,
   };
 }
 
 @Injectable()
 export class ExpensesService {
+  private readonly logger = new Logger(ExpensesService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private config: ConfigService,
   ) {}
+
+  // Même configuration Supabase Storage que PatientImagesService (bucket
+  // privé, clé service côté serveur uniquement).
+  private storageConfig() {
+    const url = this.config.get<string>('SUPABASE_URL');
+    const serviceKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    const bucket = this.config.get<string>('SUPABASE_STORAGE_BUCKET') || 'patient-files';
+    if (!url || !serviceKey) {
+      throw new BadRequestException(
+        "Le stockage des fichiers n'est pas encore configuré (Supabase Storage)",
+      );
+    }
+    return { url, serviceKey, bucket };
+  }
+
+  // Suppression « au mieux » d'un fichier du stockage : un échec ne doit
+  // jamais bloquer la suppression/le remplacement côté base.
+  private async supprimerDuStockage(chemin: string) {
+    try {
+      const { url, serviceKey, bucket } = this.storageConfig();
+      await fetch(`${url}/storage/v1/object/${bucket}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          apikey: serviceKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prefixes: [chemin] }),
+      });
+    } catch (err) {
+      this.logger.warn(`Suppression du fichier ${chemin} impossible : ${String(err)}`);
+    }
+  }
 
   // Isolation cabinet strictement en 404, jamais 403 — même convention que
   // NoShowRecoveriesService / RemindersService : un ID inexistant et un ID
@@ -150,8 +199,11 @@ export class ExpensesService {
   }
 
   async delete(cabinetId: number, id: number, actor: ActorContext) {
-    await this.assertExpenseDuCabinet(cabinetId, id);
+    const existing = await this.assertExpenseDuCabinet(cabinetId, id);
     await this.prisma.expense.delete({ where: { id } });
+    if (existing.pieceJointeChemin) {
+      await this.supprimerDuStockage(existing.pieceJointeChemin);
+    }
 
     await this.auditLog.log({
       userId: actor.userId,
@@ -163,5 +215,114 @@ export class ExpensesService {
     });
 
     return { success: true };
+  }
+
+  // ==== PIÈCE JOINTE (facture, reçu — 2026-10-09) ====
+
+  async uploadPieceJointe(
+    cabinetId: number,
+    id: number,
+    file: Express.Multer.File,
+    actor: ActorContext,
+  ) {
+    const existing = await this.assertExpenseDuCabinet(cabinetId, id);
+    if (!file) throw new BadRequestException('Aucun fichier reçu');
+    if (file.size > TAILLE_MAX_OCTETS) {
+      throw new BadRequestException('Fichier trop volumineux (15 Mo maximum)');
+    }
+
+    const { url, serviceKey, bucket } = this.storageConfig();
+    const extension = (file.originalname.split('.').pop() || 'bin').toLowerCase();
+    const chemin = `cabinet-${cabinetId}/depenses/${id}/${randomUUID()}.${extension}`;
+
+    const res = await fetch(`${url}/storage/v1/object/${bucket}/${chemin}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+        'Content-Type': file.mimetype || 'application/octet-stream',
+      },
+      body: file.buffer as unknown as BodyInit,
+    });
+    if (!res.ok) {
+      throw new BadRequestException("Erreur lors de l'envoi du fichier au stockage");
+    }
+
+    const expense = await this.prisma.expense.update({
+      where: { id },
+      data: {
+        pieceJointeChemin: chemin,
+        pieceJointeNom: file.originalname.slice(0, 255),
+        pieceJointeMime: (file.mimetype || '').slice(0, 100) || null,
+      },
+    });
+
+    // Remplacement : l'ancien fichier est retiré du stockage.
+    if (existing.pieceJointeChemin) {
+      await this.supprimerDuStockage(existing.pieceJointeChemin);
+    }
+
+    await this.auditLog.log({
+      userId: actor.userId,
+      cabinetId,
+      action: 'expense.attachment_uploaded',
+      entityType: 'Expense',
+      entityId: id,
+      details: { nom: file.originalname, taille: file.size },
+      ipAddress: actor.ipAddress,
+    });
+
+    return serialize(expense);
+  }
+
+  async getPieceJointeUrl(cabinetId: number, id: number) {
+    const expense = await this.assertExpenseDuCabinet(cabinetId, id);
+    if (!expense.pieceJointeChemin) {
+      throw new NotFoundException('Aucune pièce jointe pour cette dépense');
+    }
+
+    const { url, serviceKey, bucket } = this.storageConfig();
+    const res = await fetch(`${url}/storage/v1/object/sign/${bucket}/${expense.pieceJointeChemin}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expiresIn: DUREE_URL_SIGNEE }),
+    });
+    const data = res.ok ? ((await res.json()) as { signedURL?: string }) : null;
+    if (!data?.signedURL) {
+      throw new BadRequestException("Impossible d'ouvrir la pièce jointe pour le moment");
+    }
+
+    return {
+      url: `${url}/storage/v1${data.signedURL}`,
+      nom: expense.pieceJointeNom,
+      mime: expense.pieceJointeMime,
+    };
+  }
+
+  async deletePieceJointe(cabinetId: number, id: number, actor: ActorContext) {
+    const existing = await this.assertExpenseDuCabinet(cabinetId, id);
+    if (!existing.pieceJointeChemin) return serialize(existing);
+
+    const expense = await this.prisma.expense.update({
+      where: { id },
+      data: { pieceJointeChemin: null, pieceJointeNom: null, pieceJointeMime: null },
+    });
+    await this.supprimerDuStockage(existing.pieceJointeChemin);
+
+    await this.auditLog.log({
+      userId: actor.userId,
+      cabinetId,
+      action: 'expense.attachment_deleted',
+      entityType: 'Expense',
+      entityId: id,
+      details: { nom: existing.pieceJointeNom },
+      ipAddress: actor.ipAddress,
+    });
+
+    return serialize(expense);
   }
 }

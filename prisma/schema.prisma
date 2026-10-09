@@ -557,6 +557,11 @@ model Expense {
   dateDepense   DateTime @map("date_depense") @db.Date
   fournisseur   String?  @db.VarChar(200)
   justificatif  String?  @db.Text
+  // Pièce jointe (facture, reçu — 2026-10-09) : fichier dans Supabase Storage
+  // (même bucket privé que les pièces jointes patient), lu via URL signée.
+  pieceJointeChemin String? @map("piece_jointe_chemin") @db.Text
+  pieceJointeNom    String? @map("piece_jointe_nom") @db.VarChar(255)
+  pieceJointeMime   String? @map("piece_jointe_mime") @db.VarChar(100)
   createdById   Int?     @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
 

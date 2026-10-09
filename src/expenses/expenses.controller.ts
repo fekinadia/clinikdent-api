@@ -9,9 +9,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -83,6 +86,45 @@ export class ExpensesController {
   @ApiOperation({ summary: 'Supprimer une dépense' })
   delete(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.expensesService.delete(user.cabinetId, id, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
+
+  // Pièce jointe (facture, reçu — 2026-10-09)
+  @Roles('admin', 'medecin', 'comptable')
+  @Post(':id/piece-jointe')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Joindre (ou remplacer) la facture / le reçu d\'une dépense' })
+  uploadPieceJointe(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    return this.expensesService.uploadPieceJointe(user.cabinetId, id, file, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
+
+  @Roles('admin', 'medecin', 'comptable')
+  @Get(':id/piece-jointe')
+  @ApiOperation({ summary: 'Lien temporaire (5 min) pour ouvrir la pièce jointe' })
+  getPieceJointe(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
+    return this.expensesService.getPieceJointeUrl(user.cabinetId, id);
+  }
+
+  @Roles('admin', 'medecin', 'comptable')
+  @Delete(':id/piece-jointe')
+  @ApiOperation({ summary: 'Retirer la pièce jointe d\'une dépense' })
+  deletePieceJointe(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    return this.expensesService.deletePieceJointe(user.cabinetId, id, {
       userId: user.userId,
       ipAddress: req.ip,
     });
