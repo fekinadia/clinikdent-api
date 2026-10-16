@@ -59,3 +59,52 @@ export class CreatePrescriptionModeleDto {
   @IsNotEmpty()
   contenu: string;
 }
+
+// Catalogue de médicaments (page "Médicaments", 2026-10-02). Depuis le
+// 2026-10-16 : catalogue commun en lecture seule (cabinetId null) + médicaments
+// propres à chaque cabinet — le cabinetId vient toujours du jeton, jamais du
+// corps de la requête (aucun champ cabinetId ici).
+export class CreateMedicationDto {
+  @ApiProperty({ example: 'Doliprane 1G B/8' })
+  @IsString()
+  @IsNotEmpty()
+  nom: string;
+
+  @ApiPropertyOptional({ example: '1000 CP' })
+  @IsOptional()
+  @IsString()
+  dosage?: string;
+
+  @ApiPropertyOptional({ example: 'Comprimés' })
+  @IsOptional()
+  @IsString()
+  forme?: string;
+
+  @ApiPropertyOptional({ example: '1000 CP / 3*1' })
+  @IsOptional()
+  @IsString()
+  posologieDefaut?: string;
+}
+
+export class UpdateMedicationDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  nom?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dosage?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  forme?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  posologieDefaut?: string;
+}
