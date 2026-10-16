@@ -293,6 +293,8 @@ model Treatment {
   medecin      User?        @relation(fields: [medecinId], references: [id])
   appointment  Appointment? @relation(fields: [appointmentId], references: [id])
   acts         TreatmentAct[]
+  // Pièces jointes rattachées à cette consultation (2026-10-16).
+  images       PatientImage[]
 
   @@index([patientId])
   @@index([dateSoin])
@@ -482,13 +484,19 @@ model PatientImage {
   datePrise      DateTime? @map("date_prise") @db.Date
   observation    String?   @db.Text
   uploadedById   Int?      @map("uploaded_by")
+  // Consultation (séance de soins) à laquelle le fichier est rattaché —
+  // facultatif (2026-10-16). Si la séance est supprimée, le fichier reste
+  // dans les pièces jointes du patient, simplement détaché.
+  treatmentId    Int?      @map("treatment_id")
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  patient     Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  uploadedBy  User?   @relation(fields: [uploadedById], references: [id])
+  patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedBy  User?      @relation(fields: [uploadedById], references: [id])
+  treatment   Treatment? @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
 
   @@index([patientId])
   @@index([type])
+  @@index([treatmentId])
   @@map("patient_images")
 }
 
