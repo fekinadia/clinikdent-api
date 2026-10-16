@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   UploadedFile,
   UseGuards,
@@ -15,7 +16,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { JwtGuard } from '../auth/jwt.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { PatientImagesService } from './patient-images.service';
-import { UploadPatientImageDto } from './dto/patient-image.dto';
+import { LinkPatientImageDto, UploadPatientImageDto } from './dto/patient-image.dto';
 
 @ApiTags('Patient Images')
 @ApiBearerAuth()
@@ -41,6 +42,17 @@ export class PatientImagesController {
   @ApiOperation({ summary: "Lister les pièces jointes d'un patient" })
   list(@CurrentUser() user: CurrentUserType, @Param('patientId', ParseIntPipe) patientId: number) {
     return this.patientImagesService.list(user.cabinetId, patientId);
+  }
+
+  @Patch(':imageId')
+  @ApiOperation({ summary: 'Rattacher une pièce jointe à une consultation (ou la détacher)' })
+  link(
+    @CurrentUser() user: CurrentUserType,
+    @Param('patientId', ParseIntPipe) patientId: number,
+    @Param('imageId', ParseIntPipe) imageId: number,
+    @Body() dto: LinkPatientImageDto,
+  ) {
+    return this.patientImagesService.link(user.cabinetId, patientId, imageId, dto.treatmentId ?? null);
   }
 
   @Delete(':imageId')

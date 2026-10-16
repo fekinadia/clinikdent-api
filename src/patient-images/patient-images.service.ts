@@ -28,6 +28,14 @@ export class PatientImagesService {
     return patient;
   }
 
+  // La consultation doit appartenir au même patient (donc au même cabinet).
+  private async assertConsultationDuPatient(patientId: number, treatmentId: number) {
+    const treatment = await this.prisma.treatment.findUnique({ where: { id: treatmentId } });
+    if (!treatment || treatment.patientId !== patientId) {
+      throw new BadRequestException('Consultation invalide pour ce patient');
+    }
+  }
+
   private storageConfig() {
     const url = this.config.get<string>('SUPABASE_URL');
     const serviceKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY');
@@ -45,9 +53,18 @@ export class PatientImagesService {
     patientId: number,
     userId: number,
     file: Express.Multer.File,
-    dto: { type: TypeImagePatient; titre?: string; observation?: string; datePrise?: string },
+    dto: {
+      type: TypeImagePatient;
+      titre?: string;
+      observation?: string;
+      datePrise?: string;
+      treatmentId?: number;
+    },
   ) {
     await this.assertPatientDuCabinet(cabinetId, patientId);
+    if (dto.treatmentId) {
+      await this.assertConsultationDuPatient(patientId, dto.treatmentId);
+    }
 
     if (!file) {
       throw new BadRequestException('Aucun fichier reçu');
@@ -85,6 +102,7 @@ export class PatientImagesService {
         datePrise: dto.datePrise ? new Date(dto.datePrise) : null,
         observation: dto.observation,
         uploadedById: userId,
+        treatmentId: dto.treatmentId ?? null,
       },
     });
 
@@ -125,6 +143,28 @@ export class PatientImagesService {
     );
 
     return avecUrls;
+  }
+
+  // Rattacher une pièce jointe existante à une consultation, ou la détacher.
+  async link(cabinetId: number, patientId: number, imageId: number, treatmentId: number | null) {
+    await this.assertPatientDuCabinet(cabinetId, patientId);
+
+    const image = await this.prisma.patientImage.findUnique({ where: { id: imageId } });
+    if (!image || image.patientId !== patientId) {
+      throw new NotFoundException('Fichier introuvable');
+    }
+    if (treatmentId) {
+      await this.assertConsultationDuPatient(patientId, treatmentId);
+    }
+
+    const updated = await this.prisma.patientImage.update({
+      where: { id: imageId },
+      data: { treatmentId: treatmentId || null },
+    });
+    return {
+      ...updated,
+      tailleOctets: updated.tailleOctets ? updated.tailleOctets.toString() : null,
+    };
   }
 
   async delete(cabinetId: number, patientId: number, imageId: number) {
