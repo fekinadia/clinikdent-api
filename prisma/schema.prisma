@@ -48,6 +48,7 @@ model Cabinet {
   recalls               Recall[]
   documents              Document[]
   calendarEvents         CalendarEvent[]
+  medications            Medication[]
 
   @@map("cabinets")
 }
@@ -367,11 +368,17 @@ model Medication {
   forme            String?  @db.VarChar(50)
   posologieDefaut  String?  @map("posologie_defaut") @db.VarChar(200)
   actif            Boolean  @default(true)
+  // Propriétaire (2026-10-16) : null = catalogue commun à tous les cabinets
+  // (lecture seule) ; sinon médicament ajouté par ce cabinet, visible et
+  // modifiable par lui seul.
+  cabinetId        Int?     @map("cabinet_id")
 
   famille            MedicationFamily?           @relation(fields: [familleId], references: [id])
+  cabinet            Cabinet?                    @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   templateItems      PrescriptionTemplateItem[]
   prescriptionItems  PrescriptionItem[]
 
+  @@index([cabinetId])
   @@map("medications")
 }
 
