@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -14,7 +15,12 @@ import { JwtGuard } from '../auth/jwt.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { PrescriptionsService } from './prescriptions.service';
-import { CreatePrescriptionDto, CreatePrescriptionModeleDto } from './dto/prescription.dto';
+import {
+  CreateMedicationDto,
+  CreatePrescriptionDto,
+  CreatePrescriptionModeleDto,
+  UpdateMedicationDto,
+} from './dto/prescription.dto';
 
 @ApiTags('Ordonnances')
 @ApiBearerAuth()
@@ -62,9 +68,47 @@ export class PrescriptionsController {
 
   @Roles('admin', 'medecin', 'assistante')
   @Get('medications')
-  @ApiOperation({ summary: 'Catalogue des médicaments (avec recherche)' })
-  listMedications(@Query('search') search?: string) {
-    return this.prescriptionsService.listMedications(search);
+  @ApiOperation({ summary: 'Catalogue des médicaments (avec recherche, autocomplete)' })
+  listMedications(@CurrentUser() user: CurrentUserType, @Query('search') search?: string) {
+    return this.prescriptionsService.listMedications(user.cabinetId, search);
+  }
+
+  // Page "Médicaments" (2026-10-02)
+  @Roles('admin', 'medecin', 'assistante')
+  @Get('medications/catalog')
+  @ApiOperation({ summary: 'Catalogue des médicaments paginé, avec compteur "Prescrit"' })
+  listMedicationsCatalog(
+    @CurrentUser() user: CurrentUserType,
+    @Query('search') search?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.prescriptionsService.listMedicationsCatalog(user.cabinetId, { search, page, limit });
+  }
+
+  @Roles('admin', 'medecin')
+  @Post('medications')
+  @ApiOperation({ summary: 'Ajouter un médicament (propre au cabinet)' })
+  createMedication(@CurrentUser() user: CurrentUserType, @Body() dto: CreateMedicationDto) {
+    return this.prescriptionsService.createMedication(user.cabinetId, dto);
+  }
+
+  @Roles('admin', 'medecin')
+  @Patch('medications/:id')
+  @ApiOperation({ summary: "Modifier un médicament du cabinet (le catalogue commun est en lecture seule)" })
+  updateMedication(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateMedicationDto,
+  ) {
+    return this.prescriptionsService.updateMedication(user.cabinetId, id, dto);
+  }
+
+  @Roles('admin', 'medecin')
+  @Delete('medications/:id')
+  @ApiOperation({ summary: 'Retirer un médicament du cabinet (désactivation)' })
+  deactivateMedication(@CurrentUser() user: CurrentUserType, @Param('id', ParseIntPipe) id: number) {
+    return this.prescriptionsService.deactivateMedication(user.cabinetId, id);
   }
 
   @Roles('admin', 'medecin', 'assistante')
