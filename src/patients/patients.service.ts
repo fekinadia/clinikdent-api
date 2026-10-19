@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
 import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
+import { parseBirthDateSearch } from './birth-date-search';
 
 export interface ActorContext {
   userId: number;
@@ -164,6 +165,27 @@ export class PatientsService {
         { gsm: { contains: query.search } },
         { numeroDossier: { contains: query.search } },
       ];
+
+      // Recherche par date de naissance (2026-10-19) : "13/01/1990",
+      // "13 jan", "01/1990", "1990"… (voir birth-date-search.ts). Si la
+      // saisie n'est pas une date, rien ne change.
+      const naissance = parseBirthDateSearch(query.search);
+      if (naissance?.kind === 'exact') {
+        where.OR.push({ dateNaissance: naissance.date });
+      } else if (naissance?.kind === 'range') {
+        where.OR.push({ dateNaissance: { gte: naissance.from, lt: naissance.to } });
+      } else if (naissance?.kind === 'dayMonth') {
+        // Jour + mois sans année (anniversaires) : Prisma ne sait pas
+        // filtrer sur une partie de date, on récupère donc les identifiants
+        // en SQL (requête paramétrée, limitée au cabinet).
+        const lignes = await this.prisma.$queryRaw<{ id: number }[]>`
+          SELECT id FROM patients
+          WHERE cabinet_id = ${cabinetId}
+            AND date_naissance IS NOT NULL
+            AND EXTRACT(MONTH FROM date_naissance)::int = ${naissance.month}::int
+            AND EXTRACT(DAY FROM date_naissance)::int = ${naissance.day}::int`;
+        where.OR.push({ id: { in: lignes.map((l) => l.id) } });
+      }
     }
 
     const sortOrder = query.sortOrder === 'desc' ? 'desc' : 'asc';
