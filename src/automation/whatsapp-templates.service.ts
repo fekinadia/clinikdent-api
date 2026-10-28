@@ -20,6 +20,7 @@ export class WhatsAppTemplatesService {
         type: dto.type,
         nom: dto.nom,
         contenu: dto.contenu,
+        langue: dto.langue ?? 'fr',
         statutApprobation: 'brouillon',
         createdById: userId,
       },
@@ -46,6 +47,7 @@ export class WhatsAppTemplatesService {
         ...(dto.nom !== undefined ? { nom: dto.nom } : {}),
         ...(dto.contenu !== undefined ? { contenu: dto.contenu } : {}),
         ...(dto.type !== undefined ? { type: dto.type } : {}),
+        ...(dto.langue !== undefined ? { langue: dto.langue } : {}),
         ...(contenuChange ? { statutApprobation: 'brouillon', metaTemplateName: null } : {}),
       },
     });

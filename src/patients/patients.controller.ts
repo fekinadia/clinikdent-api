@@ -21,6 +21,7 @@ import {
   CreatePatientDto,
   UpdatePatientDto,
   UpdateEtiquetteDto,
+  UpdateLangueMessagesDto,
   ListPatientsQueryDto,
 } from './dto/patient.dto';
 
@@ -102,6 +103,19 @@ export class PatientsController {
     @Body() dto: UpdateEtiquetteDto,
   ) {
     return this.patientsService.updateEtiquette(user.cabinetId, id, dto.etiquette);
+  }
+
+  // Rappels WhatsApp (2026-10-23) : langue des messages, changée depuis la
+  // page Rappels sans retirer le statut prospect (même raison que ci-dessus).
+  @Roles('admin', 'medecin', 'assistante', 'reception')
+  @Patch(':id/langue-messages')
+  @ApiOperation({ summary: 'Changer la langue des rappels WhatsApp du patient' })
+  updateLangueMessages(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateLangueMessagesDto,
+  ) {
+    return this.patientsService.updateLangueMessages(user.cabinetId, id, dto.langueMessages);
   }
 
   // Suppression définitive et en cascade de tout le dossier patient (RDV,

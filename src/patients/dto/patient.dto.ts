@@ -102,9 +102,25 @@ export class CreatePatientDto {
   @IsString()
   @MaxLength(50)
   etiquette?: string;
+
+  @ApiPropertyOptional({
+    enum: ['fr', 'ar'],
+    description: 'Langue des rappels WhatsApp envoyés au patient (français par défaut).',
+  })
+  @IsOptional()
+  @IsIn(['fr', 'ar'])
+  langueMessages?: string;
 }
 
 export class UpdatePatientDto extends PartialType(CreatePatientDto) {}
+
+// Rappels WhatsApp (2026-10-23) : changement rapide de langue depuis la page
+// Rappels, sans passer par le PATCH générique (qui retire le statut prospect).
+export class UpdateLangueMessagesDto {
+  @ApiProperty({ enum: ['fr', 'ar'] })
+  @IsIn(['fr', 'ar'])
+  langueMessages: string;
+}
 
 export class UpdateEtiquetteDto {
   @ApiPropertyOptional({

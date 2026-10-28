@@ -29,9 +29,12 @@ function makeService() {
       update: jest.fn(),
     },
   } as any;
+  // Configuré et en succès : ces tests portent sur la garde défensive, pas
+  // sur l'état de WhatsApp (voir automation-scheduler.recalls-noshow.spec.ts).
   const whatsappService = {
+    isConfigured: jest.fn().mockReturnValue(true),
     sendAppointmentReminder: jest.fn(),
-    sendNoShowFollowUp: jest.fn(),
+    sendNoShowFollowUp: jest.fn().mockResolvedValue({ success: true }),
     sendRecall: jest.fn(),
   } as unknown as WhatsAppService;
   const automationSettingsService = { get: jest.fn() } as unknown as AutomationSettingsService;

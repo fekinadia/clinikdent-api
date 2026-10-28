@@ -47,6 +47,19 @@ export class UpdateAppointmentDto extends PartialType(CreateAppointmentDto) {
   statut?: string;
 }
 
+// Rappels WhatsApp « en un geste » (2026-10-23) : bornes de la journée à
+// rappeler, calculées par le navigateur à l'heure de Tunisie (le serveur
+// Render tourne en UTC).
+export class ListRappelsQueryDto {
+  @ApiProperty({ example: '2026-10-23T23:00:00.000Z', description: 'Début de la période (inclus)' })
+  @IsDateString()
+  debut: string;
+
+  @ApiProperty({ example: '2026-10-24T23:00:00.000Z', description: 'Fin de la période (exclue)' })
+  @IsDateString()
+  fin: string;
+}
+
 export class ListAppointmentsQueryDto {
   @ApiPropertyOptional({ description: 'Date début (YYYY-MM-DD)' })
   @IsOptional()
