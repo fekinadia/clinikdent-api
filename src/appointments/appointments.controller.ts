@@ -21,6 +21,7 @@ import {
   CreateAppointmentDto,
   UpdateAppointmentDto,
   ListAppointmentsQueryDto,
+  ListRappelsQueryDto,
 } from './dto/appointment.dto';
 
 @ApiTags('Rendez-vous')
@@ -49,6 +50,41 @@ export class AppointmentsController {
   @ApiOperation({ summary: "Rendez-vous du jour" })
   today(@CurrentUser() user: CurrentUserType) {
     return this.appointmentsService.findToday(user.cabinetId);
+  }
+
+  // Rappels WhatsApp « en un geste » (2026-10-23) — déclaré avant ':id'.
+  @Get('rappels')
+  @ApiOperation({ summary: 'Rendez-vous d’une période à rappeler sur WhatsApp' })
+  rappels(@CurrentUser() user: CurrentUserType, @Query() query: ListRappelsQueryDto) {
+    return this.appointmentsService.findRappels(user.cabinetId, query);
+  }
+
+  @Roles('admin', 'medecin', 'assistante', 'reception')
+  @Post(':id/rappel')
+  @ApiOperation({ summary: 'Noter que le rappel WhatsApp a été envoyé' })
+  marquerRappel(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    return this.appointmentsService.marquerRappel(user.cabinetId, id, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
+
+  @Roles('admin', 'medecin', 'assistante', 'reception')
+  @Delete(':id/rappel')
+  @ApiOperation({ summary: 'Annuler un rappel WhatsApp noté par erreur' })
+  annulerRappel(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    return this.appointmentsService.annulerRappel(user.cabinetId, id, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
   }
 
   @Get(':id')

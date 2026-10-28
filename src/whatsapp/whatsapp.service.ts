@@ -4,7 +4,8 @@ import { Injectable, Logger } from '@nestjs/common';
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
 
-  private isConfigured(): boolean {
+  /** Public : le planificateur ne marque aucun rappel « envoyé » tant que c'est faux. */
+  isConfigured(): boolean {
     return !!process.env.WHATSAPP_API_TOKEN && !!process.env.WHATSAPP_PHONE_NUMBER_ID;
   }
 
