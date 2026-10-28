@@ -105,7 +105,6 @@ model User {
   documentsCreated           Document[] @relation("DocumentCreatedBy")
   calendarEvents             CalendarEvent[]
   calendarEventsCreated      CalendarEvent[] @relation("CalendarEventCreator")
-  appointmentsRappeles       Appointment[]   @relation("AppointmentRappelPar")
 
   @@index([cabinetId])
   @@index([email])
@@ -146,8 +145,6 @@ model Patient {
   photoUrl            String?   @map("photo_url") @db.Text
   reseauSocial        String?   @map("reseau_social") @db.VarChar(255)
   etiquette           String?   @db.VarChar(50)
-  // Rappels WhatsApp (2026-10-23) : langue des messages envoyés au patient ('fr' | 'ar').
-  langueMessages      String    @default("fr") @map("langue_messages") @db.VarChar(2)
   estProspect         Boolean   @default(false) @map("est_prospect")
   createdById         Int?      @map("created_by")
   createdAt           DateTime  @default(now()) @map("created_at")
@@ -203,10 +200,6 @@ model Appointment {
   statut         String   @default("planifie") @db.VarChar(20)
   observation    String?  @db.Text
   rappelEnvoye   Boolean  @default(false) @map("rappel_envoye")
-  // Rappels WhatsApp « en un geste » (2026-10-23) : quand et par qui le
-  // rappel a été ouvert dans WhatsApp depuis la page Rappels.
-  rappelEnvoyeAt  DateTime? @map("rappel_envoye_at")
-  rappelEnvoyePar Int?      @map("rappel_envoye_par")
   // Salle d'attente (2026-09-26) : heure d'arrivée du patient au cabinet
   // (statut 'arrive') et heure d'entrée au fauteuil (statut 'en_cours').
   heureArrivee   DateTime? @map("heure_arrivee")
@@ -220,7 +213,6 @@ model Appointment {
   medecin     User?            @relation(fields: [medecinId], references: [id])
   type        AppointmentType? @relation(fields: [typeId], references: [id])
   createdBy   User?            @relation("AppointmentCreator", fields: [createdById], references: [id])
-  rappelEnvoyeParUser User?    @relation("AppointmentRappelPar", fields: [rappelEnvoyePar], references: [id], onDelete: SetNull)
   treatments  Treatment[]
   appointmentReminders       AppointmentReminder[]
   whatsappMessages           WhatsAppMessage[]
@@ -703,8 +695,6 @@ model WhatsAppTemplate {
   type              String   @db.VarChar(20)
   nom               String   @db.VarChar(150)
   contenu           String   @db.Text
-  // Langue du modèle ('fr' | 'ar') : la page Rappels choisit le modèle dans la langue du patient.
-  langue            String   @default("fr") @db.VarChar(2)
   statutApprobation String   @default("brouillon") @map("statut_approbation") @db.VarChar(20)
   metaTemplateName  String?  @map("meta_template_name") @db.VarChar(255)
   createdById       Int      @map("created_by")

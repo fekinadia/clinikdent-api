@@ -16,8 +16,7 @@ const STATUTS_ELIGIBLES_NO_SHOW = ['planifie', 'confirme'];
 /**
  * Traite périodiquement les rappels de RDV, les relances no-show et les
  * recalls arrivés à échéance, et déclenche l'envoi WhatsApp correspondant
- * (no-op tant que les credentials Meta ne sont pas configurées : rien n'est
- * alors marqué « envoyé », voir chaque méthode).
+ * (no-op tant que les credentials Meta ne sont pas configurées).
  *
  * Chaque envoi suit un pattern "claim-then-send" : on bascule d'abord la
  * ligne dans un nouveau statut via un updateMany conditionné sur son statut
@@ -142,12 +141,6 @@ export class AutomationSchedulerService {
   }
 
   private async processReminders(now: Date): Promise<number> {
-    // Rappels WhatsApp (2026-10-23) : tant que l'API WhatsApp n'est pas
-    // configurée, aucun rappel n'est réclamé ni marqué « envoyé ». Avant, la
-    // page Rappels affichait « Envoyé » alors que rien ne partait ; les
-    // rappels se font désormais depuis cette page, en un geste.
-    if (!this.whatsappService.isConfigured()) return 0;
-
     const candidates = await this.prisma.appointmentReminder.findMany({
       where: {
         statut: 'programme',
@@ -173,32 +166,17 @@ export class AutomationSchedulerService {
       });
       if (claim.count !== 1) continue;
 
-      const result = await this.whatsappService.sendAppointmentReminder(
+      await this.whatsappService.sendAppointmentReminder(
         reminder.appointment.patient.gsm,
         reminder.appointmentId,
         reminder.offsetHours,
       );
-      if (!result.success) {
-        await this.prisma.appointmentReminder.update({
-          where: { id: reminder.id },
-          data: { statut: 'echec', envoyeAt: null },
-        });
-        continue;
-      }
       sent++;
     }
     return sent;
   }
 
   private async processNoShowRecoveries(now: Date): Promise<number> {
-    // Fin du faux « envoyé » (2026-10-24) : tant que l'API WhatsApp n'est
-    // pas configurée, aucune relance n'est réclamée ni datée. Avant,
-    // relanceEnvoyeeAt était posée alors que rien ne partait.
-    // ⚠️ Phase 2 : à l'activation de l'envoi, les relances encore
-    // 'en_attente' accumulées d'ici là partiront toutes d'un coup (le délai
-    // est déjà écoulé) — prévoir une limite d'ancienneté à ce moment-là.
-    if (!this.whatsappService.isConfigured()) return 0;
-
     const candidates = await this.prisma.noShowRecovery.findMany({
       where: {
         statut: 'en_attente',
@@ -244,20 +222,10 @@ export class AutomationSchedulerService {
       });
       if (claim.count !== 1) continue;
 
-      const result = await this.whatsappService.sendNoShowFollowUp(
+      await this.whatsappService.sendNoShowFollowUp(
         recovery.appointment.patient.gsm,
         recovery.appointmentId,
       );
-      if (!result.success) {
-        // Rien n'est parti : on efface la date posée par le claim. La
-        // relance reste 'en_attente' (son statut suit le workflow du
-        // cabinet, pas l'envoi) et sera retentée au passage suivant.
-        await this.prisma.noShowRecovery.update({
-          where: { id: recovery.id },
-          data: { relanceEnvoyeeAt: null },
-        });
-        continue;
-      }
       sent++;
     }
     return sent;
@@ -272,14 +240,6 @@ export class AutomationSchedulerService {
       include: { patient: true },
     });
 
-    // Fin du faux « Envoyé » (2026-10-24) : un recall arrivé à échéance passe
-    // à 'du' (« Dû » = patient à contacter) et ne devient 'envoye' que si
-    // WhatsApp a réellement envoyé le message. Avant, il passait à 'envoye'
-    // alors que l'envoi n'est pas branché. Contrairement aux rappels de RDV,
-    // on marque quand même 'du' sans WhatsApp configuré : sinon un recall
-    // échu resterait « À venir », ce qui serait faux aussi.
-    const whatsappConfigure = this.whatsappService.isConfigured();
-
     let sent = 0;
     for (const recall of candidates) {
       const claim = await this.prisma.recall.updateMany({
@@ -288,11 +248,7 @@ export class AutomationSchedulerService {
       });
       if (claim.count !== 1) continue;
 
-      if (!whatsappConfigure) continue;
-
-      const result = await this.whatsappService.sendRecall(recall.patient.gsm, recall.id);
-      // Échec : le recall reste « Dû », à contacter par le cabinet.
-      if (!result.success) continue;
+      await this.whatsappService.sendRecall(recall.patient.gsm, recall.id);
 
       // Pas besoin de re-claim ici : le passage à 'du' ci-dessus a déjà été
       // acquis de façon exclusive par ce process pour cette ligne.

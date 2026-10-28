@@ -334,26 +334,6 @@ export class PatientsService {
     });
   }
 
-  /**
-   * Rappels WhatsApp (2026-10-23) : langue des messages modifiée depuis la
-   * page Rappels. Comme updateEtiquette, ne touche pas au statut prospect.
-   */
-  async updateLangueMessages(cabinetId: number, id: number, langueMessages: string) {
-    const patient = await this.prisma.patient.findUnique({ where: { id } });
-    if (!patient) {
-      throw new NotFoundException('Patient introuvable');
-    }
-    if (patient.cabinetId !== cabinetId) {
-      throw new ForbiddenException("Ce patient n'appartient pas à votre cabinet");
-    }
-
-    return this.prisma.patient.update({
-      where: { id },
-      data: { langueMessages },
-      select: { id: true, langueMessages: true },
-    });
-  }
-
   async delete(cabinetId: number, id: number, actor?: ActorContext) {
     const patient = await this.findOne(cabinetId, id);
     await this.prisma.patient.delete({ where: { id } });

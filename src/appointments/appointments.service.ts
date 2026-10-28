@@ -11,7 +11,6 @@ import {
   CreateAppointmentDto,
   UpdateAppointmentDto,
   ListAppointmentsQueryDto,
-  ListRappelsQueryDto,
 } from './dto/appointment.dto';
 
 export interface ActorContext {
@@ -22,18 +21,6 @@ export interface ActorContext {
 // Statuts considérés comme "résolus" : un RDV déjà annulé ou terminé ne peut
 // pas être reclassé no-show a posteriori (STEP 4 — endpoint dédié).
 const STATUTS_RESOLUS = ['annule', 'termine'];
-
-// Rappels WhatsApp (2026-10-23) : un RDV annulé, terminé, absent ou no-show
-// n'apparaît pas dans la liste des patients à rappeler.
-const STATUTS_EXCLUS_RAPPELS = ['annule', 'termine', 'absent', 'no_show'];
-const RAPPELS_PERIODE_MAX_MS = 7 * 24 * 3600 * 1000;
-
-const RAPPEL_INCLUDE = {
-  patient: { select: { id: true, nom: true, prenom: true, gsm: true, langueMessages: true } },
-  type: { select: { id: true, libelle: true } },
-  medecin: { select: { id: true, nom: true, prenom: true } },
-  rappelEnvoyeParUser: { select: { id: true, nom: true, prenom: true } },
-} as const;
 
 @Injectable()
 export class AppointmentsService {
@@ -367,88 +354,6 @@ export class AppointmentsService {
     });
 
     return updated;
-  }
-
-  /**
-   * Rappels WhatsApp « en un geste » (2026-10-23) : RDV d'une période (en
-   * pratique une journée) à rappeler, avec la langue du patient et l'état du
-   * rappel. Les bornes viennent du navigateur (heure locale du cabinet).
-   */
-  async findRappels(cabinetId: number, query: ListRappelsQueryDto) {
-    const debut = new Date(query.debut);
-    const fin = new Date(query.fin);
-    if (fin <= debut) {
-      throw new BadRequestException('La fin de la période doit être après le début');
-    }
-    if (fin.getTime() - debut.getTime() > RAPPELS_PERIODE_MAX_MS) {
-      throw new BadRequestException('La période est limitée à 7 jours');
-    }
-
-    return this.prisma.appointment.findMany({
-      where: {
-        cabinetId,
-        dateDebut: { gte: debut, lt: fin },
-        statut: { notIn: STATUTS_EXCLUS_RAPPELS },
-      },
-      orderBy: { dateDebut: 'asc' },
-      include: RAPPEL_INCLUDE,
-    });
-  }
-
-  /**
-   * Note que le rappel WhatsApp a été ouvert pour ce RDV (le message part du
-   * WhatsApp du cabinet : l'app ne peut pas savoir si « Envoyer » a été pressé).
-   * Un nouvel appel met à jour l'heure et l'auteur (rappel renvoyé).
-   */
-  async marquerRappel(cabinetId: number, id: number, actor: ActorContext) {
-    await this.assertAppointmentInCabinet(cabinetId, id);
-
-    const updated = await this.prisma.appointment.update({
-      where: { id },
-      data: { rappelEnvoye: true, rappelEnvoyeAt: new Date(), rappelEnvoyePar: actor.userId },
-      include: RAPPEL_INCLUDE,
-    });
-
-    await this.auditLog.log({
-      userId: actor.userId,
-      cabinetId,
-      action: 'appointment.rappel_whatsapp',
-      entityType: 'Appointment',
-      entityId: id,
-      ipAddress: actor.ipAddress,
-    });
-
-    return updated;
-  }
-
-  /** Annule un « rappelé » noté par erreur. */
-  async annulerRappel(cabinetId: number, id: number, actor: ActorContext) {
-    await this.assertAppointmentInCabinet(cabinetId, id);
-
-    const updated = await this.prisma.appointment.update({
-      where: { id },
-      data: { rappelEnvoye: false, rappelEnvoyeAt: null, rappelEnvoyePar: null },
-      include: RAPPEL_INCLUDE,
-    });
-
-    await this.auditLog.log({
-      userId: actor.userId,
-      cabinetId,
-      action: 'appointment.rappel_whatsapp_annule',
-      entityType: 'Appointment',
-      entityId: id,
-      ipAddress: actor.ipAddress,
-    });
-
-    return updated;
-  }
-
-  private async assertAppointmentInCabinet(cabinetId: number, id: number) {
-    const appt = await this.prisma.appointment.findUnique({ where: { id } });
-    if (!appt || appt.cabinetId !== cabinetId) {
-      throw new NotFoundException('Rendez-vous introuvable');
-    }
-    return appt;
   }
 
   async delete(cabinetId: number, id: number) {
