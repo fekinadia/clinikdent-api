@@ -26,6 +26,7 @@ interface ExistingTreatmentAct {
   cout: unknown;
   montantRecu: unknown;
   remise: unknown;
+  payments?: { montant: unknown }[];
 }
 
 @Injectable()
@@ -133,7 +134,7 @@ export class TreatmentsService {
   ) {
     const treatment = await this.prisma.treatment.findUnique({
       where: { id: treatmentId },
-      include: { patient: true, acts: true },
+      include: { patient: true, acts: { include: { payments: { select: { montant: true } } } } },
     });
     if (!treatment || treatment.patient.cabinetId !== cabinetId) {
       throw new ForbiddenException();
@@ -181,6 +182,26 @@ export class TreatmentsService {
         throw new BadRequestException(
           `Le montant encaissé corrigé (${nouveauMontantRecu.toFixed(2)} DT) dépasse le prix de l'acte ` +
             `${remise > 0 ? 'moins la remise ' : ''}(${(nouveauCout - remise).toFixed(2)} DT) pour l'acte "${existing.libelle}".`,
+        );
+      }
+      // 3. (2026-10-29) Le montant encaissé corrigé ne peut pas descendre
+      //    sous les encaissements déjà enregistrés pour l'acte : la ligne de
+      //    paiement resterait en Caisse alors que la fiche la « retire »
+      //    (cas réel : couronne payée 60 DT puis remise à 0 au crayon). Pour
+      //    annuler un encaissement, il faut le supprimer (deletePayment, qui
+      //    met aussi montantRecu à jour). Contrôlé seulement si le montant
+      //    change, pour ne pas bloquer la modification d'autres champs sur
+      //    des actes déjà incohérents.
+      const dejaEncaisse = (existing.payments ?? []).reduce((s, p) => s + Number(p.montant), 0);
+      if (
+        a.montantRecu !== undefined &&
+        a.montantRecu !== Number(existing.montantRecu) &&
+        a.montantRecu < dejaEncaisse - 0.01
+      ) {
+        throw new BadRequestException(
+          `Le montant encaissé corrigé (${a.montantRecu.toFixed(2)} DT) est inférieur aux encaissements ` +
+            `déjà enregistrés (${dejaEncaisse.toFixed(2)} DT) pour l'acte "${existing.libelle}". ` +
+            `Pour annuler un encaissement, supprimez-le plutôt que de baisser ce montant.`,
         );
       }
 
