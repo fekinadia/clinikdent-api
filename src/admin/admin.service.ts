@@ -137,6 +137,9 @@ export class AdminService {
       return {
         cabinetId: c.id,
         nomCabinet: c.nom,
+        // Compte principal du cabinet (le plus ancien) : cible du bouton
+        // « Réinitialiser le mot de passe » (2026-10-29).
+        userId: c.users[0]?.id ?? null,
         email: c.users[0]?.email ?? null,
         type,
         plan: c.plan,
@@ -178,5 +181,35 @@ export class AdminService {
     });
 
     return { success: true, cabinetId, nomCabinet: cabinet.nom };
+  }
+
+  /**
+   * Mot de passe oublié (2026-10-29) : l'app n'envoie pas d'e-mails, c'est
+   * l'administratrice de la plateforme qui réinitialise. Un mot de passe
+   * temporaire est généré, renvoyé une seule fois (jamais journalisé ni
+   * stocké en clair) ; la personne le change ensuite via « Changer mon mot
+   * de passe ». L'ancien mot de passe cesse aussitôt de fonctionner.
+   */
+  async resetPassword(userId: number, actor?: ActorContext) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable');
+    }
+
+    const tempPassword = generatePassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+    await this.auditLog.log({
+      userId: actor?.userId,
+      cabinetId: user.cabinetId,
+      action: 'user.password_reset_by_admin',
+      entityType: 'User',
+      entityId: userId,
+      details: { email: user.email },
+      ipAddress: actor?.ipAddress,
+    });
+
+    return { userId, email: user.email, tempPassword };
   }
 }

@@ -69,4 +69,17 @@ export class AdminController {
       ipAddress: req.ip,
     });
   }
+
+  @Post('users/:id/reset-password')
+  @ApiOperation({ summary: 'Réinitialiser le mot de passe d’un utilisateur (mot de passe temporaire)' })
+  resetPassword(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    return this.adminService.resetPassword(id, {
+      userId: user.userId,
+      ipAddress: req.ip,
+    });
+  }
 }
