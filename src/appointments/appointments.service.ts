@@ -475,7 +475,7 @@ export class AppointmentsService {
     }
   }
 
-  private async findConflict(
+  async findConflict(
     cabinetId: number,
     medecinId: number,
     debut: Date,

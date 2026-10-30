@@ -1,7 +1,9 @@
 import { Body, Controller, Post, Patch, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, ChangePasswordDto } from './dto/auth.dto';
+import { IpThrottlerGuard } from './ip-throttler.guard';
 import { JwtGuard } from './jwt.guard';
 import { CurrentUser, CurrentUserType } from './current-user.decorator';
 
@@ -11,6 +13,8 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
+  @UseGuards(IpThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Se connecter' })
   login(@Body() dto: LoginDto) {

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RolesGuard } from './auth/roles.guard';
@@ -26,12 +27,16 @@ import { AdminModule } from './admin/admin.module';
 import { DocumentsModule } from './documents/documents.module';
 import { CabinetModule } from './cabinet/cabinet.module';
 import { TeamModule } from './team/team.module';
+import { ReservationModule } from './reservation/reservation.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
+    // Limite par défaut : chaque route protégée (IpThrottlerGuard) précise la
+    // sienne avec @Throttle.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule,
     AuditLogModule,
     AuthModule,
@@ -54,6 +59,7 @@ import { TeamModule } from './team/team.module';
     DocumentsModule,
     CabinetModule,
     TeamModule,
+    ReservationModule,
   ],
   providers: [
     // Enregistré globalement pour éviter de dupliquer @UseGuards(RolesGuard)

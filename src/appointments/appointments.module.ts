@@ -7,5 +7,6 @@ import { AppointmentsService } from './appointments.service';
   imports: [AuditLogModule],
   controllers: [AppointmentsController],
   providers: [AppointmentsService],
+  exports: [AppointmentsService],
 })
 export class AppointmentsModule {}

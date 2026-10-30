@@ -29,6 +29,12 @@ model Cabinet {
   subscriptionEndsAt  DateTime? @map("subscription_ends_at")
   estDemo             Boolean   @default(false) @map("est_demo")
   demoExpiresAt       DateTime? @map("demo_expires_at")
+  // Réservation en ligne (2026-10-30) : lien public /rdv/:slug, désactivé par défaut.
+  // reservationHoraires : voir Horaires dans src/reservation/creneaux.ts.
+  reservationActive       Boolean @default(false) @map("reservation_active")
+  reservationSlug         String? @unique @map("reservation_slug") @db.VarChar(60)
+  reservationHoraires     Json?   @map("reservation_horaires")
+  reservationDureeCreneau Int     @default(30) @map("reservation_duree_creneau")
   createdAt           DateTime @default(now()) @map("created_at")
 
   users                 User[]
@@ -49,6 +55,7 @@ model Cabinet {
   documents              Document[]
   calendarEvents         CalendarEvent[]
   medications            Medication[]
+  demandesRdv            DemandeRdv[]
 
   @@map("cabinets")
 }
@@ -106,6 +113,7 @@ model User {
   calendarEvents             CalendarEvent[]
   calendarEventsCreated      CalendarEvent[] @relation("CalendarEventCreator")
   appointmentsRappeles       Appointment[]   @relation("AppointmentRappelPar")
+  demandesRdvTraitees        DemandeRdv[]    @relation("DemandeRdvTraiteePar")
 
   @@index([cabinetId])
   @@index([email])
@@ -228,12 +236,42 @@ model Appointment {
   noShowRecoveriesConverties NoShowRecovery[]           @relation("NoShowRecoveryNouveau")
   recallsSource              Recall[]                   @relation("RecallAppointmentSource")
   recallsConvertis           Recall[]                   @relation("RecallNouveauAppointment")
+  demandesRdv                DemandeRdv[]
 
   @@index([patientId])
   @@index([medecinId])
   @@index([dateDebut])
   @@index([statut])
   @@map("appointments")
+}
+
+// Réservation en ligne (2026-10-30) : demande envoyée depuis la page publique
+// du cabinet. Gardée à part des patients : le dossier n'est créé qu'à la
+// confirmation par le cabinet. statut : en_attente, confirmee, refusee.
+// migration-reservation-en-ligne.sql ajoute un index unique partiel
+// (cabinet_id, date_debut) sur les demandes en attente.
+model DemandeRdv {
+  id            Int       @id @default(autoincrement())
+  cabinetId     Int       @map("cabinet_id")
+  prenom        String    @db.VarChar(100)
+  nom           String    @db.VarChar(100)
+  gsm           String    @db.VarChar(30)
+  motif         String?   @db.VarChar(200)
+  langue        String    @default("fr") @db.VarChar(2)
+  dateDebut     DateTime  @map("date_debut")
+  dateFin       DateTime  @map("date_fin")
+  statut        String    @default("en_attente") @db.VarChar(20)
+  appointmentId Int?      @map("appointment_id")
+  traiteeAt     DateTime? @map("traitee_at")
+  traiteePar    Int?      @map("traitee_par")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  cabinet        Cabinet      @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  traiteeParUser User?        @relation("DemandeRdvTraiteePar", fields: [traiteePar], references: [id], onDelete: SetNull)
+
+  @@index([cabinetId, statut])
+  @@map("demandes_rdv")
 }
 
 // Bloc d'agenda libre (pause, réunion, blocage de créneau...) — à la
