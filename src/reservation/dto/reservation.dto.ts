@@ -95,4 +95,16 @@ export class ReglagesReservationDto {
   @ApiProperty({ enum: DUREES_CRENEAU })
   @IsIn(DUREES_CRENEAU)
   dureeCreneau: number;
+
+  @ApiPropertyOptional({ example: '12 avenue Habib Bourguiba, Tunis' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  adresse?: string | null;
+
+  @ApiPropertyOptional({ example: '71 000 000' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  telephone?: string | null;
 }

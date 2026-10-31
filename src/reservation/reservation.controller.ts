@@ -59,6 +59,12 @@ export class ReservationController {
     return this.reservationService.compterDemandes(user.cabinetId);
   }
 
+  @Get('demandes/a-prevenir')
+  @ApiOperation({ summary: 'Demandes traitées récemment, à annoncer au patient sur WhatsApp' })
+  aPrevenir(@CurrentUser() user: CurrentUserType) {
+    return this.reservationService.aPrevenir(user.cabinetId);
+  }
+
   @Post('demandes/:id/confirmer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Confirmer une demande : crée le rendez-vous dans l’agenda' })

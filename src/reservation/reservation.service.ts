@@ -37,6 +37,9 @@ export interface ActorContext {
 const DEMANDES_MAX_PAR_GSM = 3;
 const DEMANDES_MAX_PAR_CABINET = 100;
 
+// Après ce délai, le cabinet n'a plus à répondre sur WhatsApp depuis la page Demandes.
+const DELAI_POUR_PREVENIR_MS = 3 * 24 * 60 * 60 * 1000;
+
 /** Dans les dossiers, un numéro tunisien s'écrit sur 8 chiffres. */
 const gsmDossier = (gsm: string) => gsm.replace(/^216(?=\d{8}$)/, '');
 
@@ -136,6 +139,8 @@ export class ReservationService {
       where: { id: cabinetId },
       select: {
         nom: true,
+        adresse: true,
+        telephone: true,
         reservationActive: true,
         reservationSlug: true,
         reservationHoraires: true,
@@ -149,6 +154,8 @@ export class ReservationService {
       slug: cabinet.reservationSlug ?? (await this.proposerSlug(cabinet.nom, cabinetId)),
       horaires: (cabinet.reservationHoraires as unknown as Horaires | null) ?? HORAIRES_PAR_DEFAUT,
       dureeCreneau: cabinet.reservationDureeCreneau,
+      adresse: cabinet.adresse ?? '',
+      telephone: cabinet.telephone ?? '',
     };
   }
 
@@ -171,6 +178,8 @@ export class ReservationService {
           reservationSlug: dto.slug,
           reservationHoraires: horaires as unknown as Prisma.InputJsonValue,
           reservationDureeCreneau: dto.dureeCreneau,
+          ...(dto.adresse !== undefined && { adresse: dto.adresse?.trim() || null }),
+          ...(dto.telephone !== undefined && { telephone: dto.telephone?.trim() || null }),
         },
       });
     } catch (e) {
@@ -223,6 +232,20 @@ export class ReservationService {
     return this.prisma.demandeRdv
       .count({ where: { cabinetId, statut: 'en_attente' } })
       .then((enAttente) => ({ enAttente }));
+  }
+
+  /** Demandes traitées récemment, pour envoyer la réponse même après avoir quitté la page. */
+  aPrevenir(cabinetId: number) {
+    const maintenant = new Date();
+    return this.prisma.demandeRdv.findMany({
+      where: {
+        cabinetId,
+        statut: { in: ['confirmee', 'refusee'] },
+        traiteeAt: { gte: new Date(maintenant.getTime() - DELAI_POUR_PREVENIR_MS) },
+        dateDebut: { gt: maintenant },
+      },
+      orderBy: { traiteeAt: 'asc' },
+    });
   }
 
   async confirmer(user: CurrentUserType, id: number, dto: ConfirmerDemandeDto, actor: ActorContext) {

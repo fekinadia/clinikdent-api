@@ -428,5 +428,59 @@ describe('ReservationService', () => {
       });
       expect(auditLog.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'reservation.reglages' }));
     });
+
+    it("enregistre l'adresse et le téléphone, et vide ceux laissés blancs", async () => {
+      const { service, prisma } = makeService();
+      await service.modifierReglages(
+        CABINET_A,
+        { ...REGLAGES, adresse: ' 12 rue de Test ', telephone: '   ' },
+        ACTEUR,
+      );
+
+      expect(prisma.cabinet.update.mock.calls[0][0].data).toMatchObject({
+        adresse: '12 rue de Test',
+        telephone: null,
+      });
+    });
+
+    it("ne touche ni à l'adresse ni au téléphone s'ils ne sont pas envoyés", async () => {
+      const { service, prisma } = makeService();
+      await service.modifierReglages(CABINET_A, REGLAGES, ACTEUR);
+
+      expect(prisma.cabinet.update.mock.calls[0][0].data).not.toHaveProperty('adresse');
+      expect(prisma.cabinet.update.mock.calls[0][0].data).not.toHaveProperty('telephone');
+    });
+
+    it("renvoie l'adresse et le téléphone du cabinet, vides s'ils manquent", async () => {
+      const { service, prisma } = makeService();
+      prisma.cabinet.findUnique.mockResolvedValueOnce({
+        nom: 'Cabinet',
+        adresse: null,
+        telephone: '71000000',
+        reservationActive: true,
+        reservationSlug: SLUG,
+        reservationHoraires: null,
+        reservationDureeCreneau: 30,
+      });
+
+      await expect(service.reglages(CABINET_A)).resolves.toMatchObject({ adresse: '', telephone: '71000000' });
+    });
+  });
+
+  describe('aPrevenir', () => {
+    it('liste les réponses récentes du cabinet, pour des rendez-vous à venir', async () => {
+      const { service, prisma } = makeService();
+      await service.aPrevenir(CABINET_A);
+
+      expect(prisma.demandeRdv.findMany.mock.calls[0][0]).toEqual({
+        where: {
+          cabinetId: CABINET_A,
+          statut: { in: ['confirmee', 'refusee'] },
+          traiteeAt: { gte: new Date('2026-10-27T10:00:00Z') },
+          dateDebut: { gt: new Date('2026-10-30T10:00:00Z') },
+        },
+        orderBy: { traiteeAt: 'asc' },
+      });
+    });
   });
 });
