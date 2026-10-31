@@ -127,7 +127,7 @@ export class AppointmentsService {
       where,
       orderBy: { dateDebut: 'asc' },
       include: {
-        patient: { select: { id: true, nom: true, prenom: true, gsm: true } },
+        patient: { select: { id: true, nom: true, prenom: true, gsm: true, estProspect: true } },
         type: true,
         medecin: { select: { id: true, nom: true, prenom: true } },
       },
@@ -176,7 +176,7 @@ export class AppointmentsService {
       },
       orderBy: { dateDebut: 'asc' },
       include: {
-        patient: { select: { id: true, nom: true, prenom: true, gsm: true } },
+        patient: { select: { id: true, nom: true, prenom: true, gsm: true, estProspect: true } },
         type: true,
         medecin: { select: { id: true, nom: true, prenom: true } },
       },

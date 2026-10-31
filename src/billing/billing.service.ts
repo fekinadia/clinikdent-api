@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PATIENT_VISIBLE } from '../patients/patient-visible';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import { PLAN_LIMITS, PlanKey, isValidPlan } from './plan-limits';
@@ -30,7 +31,7 @@ export class BillingService {
     if (!cabinet) throw new NotFoundException('Cabinet introuvable');
 
     const [nbPatients, nbPraticiens] = await Promise.all([
-      this.prisma.patient.count({ where: { cabinetId } }),
+      this.prisma.patient.count({ where: { cabinetId, ...PATIENT_VISIBLE } }),
       this.prisma.user.count({ where: { cabinetId, role: 'medecin' } }),
     ]);
 

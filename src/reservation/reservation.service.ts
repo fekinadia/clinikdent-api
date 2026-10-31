@@ -214,7 +214,7 @@ export class ReservationService {
     // comparaison se fait sur le numéro normalisé, donc côté serveur.
     const patients = await this.prisma.patient.findMany({
       where: { cabinetId, gsm: { not: null } },
-      select: { id: true, nom: true, prenom: true, numeroDossier: true, gsm: true },
+      select: { id: true, nom: true, prenom: true, numeroDossier: true, gsm: true, estProspect: true },
     });
     const parGsm = new Map<string, typeof patients>();
     for (const patient of patients) {
@@ -240,7 +240,8 @@ export class ReservationService {
     return this.prisma.demandeRdv.findMany({
       where: {
         cabinetId,
-        statut: { in: ['confirmee', 'refusee'] },
+        // Une demande confirmée dont le rendez-vous a été supprimé n'a plus rien à annoncer.
+        OR: [{ statut: 'refusee' }, { statut: 'confirmee', appointmentId: { not: null } }],
         traiteeAt: { gte: new Date(maintenant.getTime() - DELAI_POUR_PREVENIR_MS) },
         dateDebut: { gt: maintenant },
       },

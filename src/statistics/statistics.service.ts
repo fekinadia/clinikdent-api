@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PATIENT_VISIBLE } from '../patients/patient-visible';
 import { PrismaService } from '../prisma/prisma.service';
 
 // STEP 4 — 'no_show' est désormais le statut officiel pour les rendez-vous
@@ -41,9 +42,9 @@ export class StatisticsService {
 
     const [totalPatients, newPatients, appointments, payments, treatmentActs, expenses] =
       await Promise.all([
-        this.prisma.patient.count({ where: { cabinetId } }),
+        this.prisma.patient.count({ where: { cabinetId, ...PATIENT_VISIBLE } }),
         this.prisma.patient.findMany({
-          where: { cabinetId, createdAt: { gte: since } },
+          where: { cabinetId, ...PATIENT_VISIBLE, createdAt: { gte: since } },
           select: { createdAt: true },
         }),
         this.prisma.appointment.findMany({

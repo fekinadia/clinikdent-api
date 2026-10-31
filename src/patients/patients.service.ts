@@ -4,6 +4,7 @@ import { AuditLogService } from '../audit/audit-log.service';
 import { CreatePatientDto, UpdatePatientDto, ListPatientsQueryDto } from './dto/patient.dto';
 import { PLAN_LIMITS, isValidPlan } from '../billing/plan-limits';
 import { parseBirthDateSearch } from './birth-date-search';
+import { PATIENT_VISIBLE } from './patient-visible';
 
 export interface ActorContext {
   userId: number;
@@ -186,6 +187,12 @@ export class PatientsService {
             AND EXTRACT(DAY FROM date_naissance)::int = ${naissance.day}::int`;
         where.OR.push({ id: { in: lignes.map((l) => l.id) } });
       }
+    }
+
+    if (query.estProspect === 'false') {
+      where.AND = [PATIENT_VISIBLE];
+    } else if (query.estProspect === 'true') {
+      where.estProspect = true;
     }
 
     const sortOrder = query.sortOrder === 'desc' ? 'desc' : 'asc';
@@ -373,10 +380,11 @@ export class PatientsService {
 
   async getStats(cabinetId: number) {
     const [total, ceMois] = await Promise.all([
-      this.prisma.patient.count({ where: { cabinetId } }),
+      this.prisma.patient.count({ where: { cabinetId, ...PATIENT_VISIBLE } }),
       this.prisma.patient.count({
         where: {
           cabinetId,
+          ...PATIENT_VISIBLE,
           createdAt: {
             gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
           },
@@ -460,7 +468,7 @@ export class PatientsService {
     const maxPatients = PLAN_LIMITS[planKey].maxPatients;
     if (maxPatients === null) return; // illimité
 
-    const total = await this.prisma.patient.count({ where: { cabinetId } });
+    const total = await this.prisma.patient.count({ where: { cabinetId, ...PATIENT_VISIBLE } });
     if (total >= maxPatients) {
       throw new ForbiddenException(
         `Limite de ${maxPatients} patients atteinte pour le plan ${PLAN_LIMITS[planKey].label}. Passez à un plan supérieur pour continuer.`,
