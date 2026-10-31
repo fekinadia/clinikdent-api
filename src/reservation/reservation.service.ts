@@ -240,8 +240,8 @@ export class ReservationService {
     return this.prisma.demandeRdv.findMany({
       where: {
         cabinetId,
-        // Une demande confirmée dont le rendez-vous a été supprimé n'a plus rien à annoncer.
-        OR: [{ statut: 'refusee' }, { statut: 'confirmee', appointmentId: { not: null } }],
+        // Une demande confirmée dont le rendez-vous a été supprimé ou annulé n'a plus rien à annoncer.
+        OR: [{ statut: 'refusee' }, { statut: 'confirmee', appointment: { statut: { not: 'annule' } } }],
         traiteeAt: { gte: new Date(maintenant.getTime() - DELAI_POUR_PREVENIR_MS) },
         dateDebut: { gt: maintenant },
       },

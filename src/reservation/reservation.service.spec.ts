@@ -475,7 +475,7 @@ describe('ReservationService', () => {
       expect(prisma.demandeRdv.findMany.mock.calls[0][0]).toEqual({
         where: {
           cabinetId: CABINET_A,
-          OR: [{ statut: 'refusee' }, { statut: 'confirmee', appointmentId: { not: null } }],
+          OR: [{ statut: 'refusee' }, { statut: 'confirmee', appointment: { statut: { not: 'annule' } } }],
           traiteeAt: { gte: new Date('2026-10-27T10:00:00Z') },
           dateDebut: { gt: new Date('2026-10-30T10:00:00Z') },
         },
