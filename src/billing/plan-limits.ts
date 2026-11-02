@@ -1,4 +1,4 @@
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 30;
 
 export const DEMO_DURATION_HOURS = 24;
 

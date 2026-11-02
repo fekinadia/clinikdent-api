@@ -26,7 +26,7 @@ export class CreateDemoAccountDto {
     enum: ['demo', 'permanent'],
     required: false,
     description:
-      "Type de compte : 'demo' (24h, prospect) ou 'permanent' (client, essai 14 jours). Par défaut : demo.",
+      "Type de compte : 'demo' (24h, prospect) ou 'permanent' (client, essai d'un mois). Par défaut : demo.",
   })
   @IsOptional()
   @IsIn(['demo', 'permanent'])
