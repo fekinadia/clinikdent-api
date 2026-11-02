@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { ESSAI_TERMINE, essaiTermine } from '../billing/plan-limits';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Role } from './roles.decorator';
 
@@ -56,17 +57,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException(SESSION_INVALIDE);
     }
 
-    // Compte démo (24h) : on bloque l'accès dès que le délai est dépassé,
-    // sur chaque requête authentifiée, sans toucher aux cabinets normaux
+    // Compte démo ou essai en un clic : on bloque l'accès dès que le délai est
+    // dépassé, sur chaque requête authentifiée, sans toucher aux cabinets normaux
     // (estDemo vaut false par défaut pour tous les cabinets existants).
-    if (
-      user.cabinet?.estDemo &&
-      user.cabinet.demoExpiresAt &&
-      user.cabinet.demoExpiresAt < new Date()
-    ) {
-      throw new UnauthorizedException(
-        "Votre période d'essai de 24h est terminée. Contactez-nous pour continuer.",
-      );
+    if (essaiTermine(user.cabinet)) {
+      throw new UnauthorizedException(ESSAI_TERMINE);
     }
 
     return {

@@ -28,6 +28,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { CabinetModule } from './cabinet/cabinet.module';
 import { TeamModule } from './team/team.module';
 import { ReservationModule } from './reservation/reservation.module';
+import { EssaiModule } from './essai/essai.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { ReservationModule } from './reservation/reservation.module';
     CabinetModule,
     TeamModule,
     ReservationModule,
+    EssaiModule,
   ],
   providers: [
     // Enregistré globalement pour éviter de dupliquer @UseGuards(RolesGuard)

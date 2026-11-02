@@ -2,13 +2,14 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto, ChangePasswordDto } from './dto/auth.dto';
-import { TRIAL_DAYS } from '../billing/plan-limits';
+import { ESSAI_TERMINE, essaiTermine, TRIAL_DAYS } from '../billing/plan-limits';
 
 @Injectable()
 export class AuthService {
@@ -63,6 +64,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      include: { cabinet: { select: { estDemo: true, demoExpiresAt: true } } },
     });
 
     if (!user || !user.actif) {
@@ -72,6 +74,11 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
       throw new UnauthorizedException('Identifiants incorrects');
+    }
+
+    // Essai terminé : dit ici, sinon la session s'ouvre puis se ferme sans explication.
+    if (essaiTermine(user.cabinet)) {
+      throw new ForbiddenException(ESSAI_TERMINE);
     }
 
     return this.signToken(user.id, user.email, user.cabinetId, user.role);
@@ -107,7 +114,7 @@ export class AuthService {
   // chaque requête (voir JwtStrategy.validate). `role` n'est renvoyé ici
   // que pour permettre au frontend d'adapter son affichage (UX uniquement,
   // pas une frontière de sécurité — voir audit du 2026-09-05, section 10).
-  private async signToken(
+  async signToken(
     userId: number,
     email: string,
     cabinetId: number,

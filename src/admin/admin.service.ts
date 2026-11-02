@@ -106,6 +106,9 @@ export class AdminService {
       cabinetId: c.id,
       nomCabinet: c.nom,
       email: c.users[0]?.email ?? null,
+      // Essai en un clic (2026-11-02) : qui rappeler, l'adresse étant technique.
+      medecin: c.users[0] ? `${c.users[0].prenom} ${c.users[0].nom}` : null,
+      telephone: c.users[0]?.telephone ?? null,
       createdAt: c.createdAt,
       demoExpiresAt: c.demoExpiresAt,
       expired: !!(c.demoExpiresAt && c.demoExpiresAt < new Date()),

@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../auth/jwt.guard';
+import { PasDeFichierEnEssaiGuard } from '../auth/pas-de-fichier-en-essai.guard';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { PatientImagesService } from './patient-images.service';
 import { LinkPatientImageDto, UploadPatientImageDto } from './dto/patient-image.dto';
@@ -26,6 +27,7 @@ export class PatientImagesController {
   constructor(private patientImagesService: PatientImagesService) {}
 
   @Post()
+  @UseGuards(PasDeFichierEnEssaiGuard)
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Ajouter une photo, radio ou scan au dossier du patient' })

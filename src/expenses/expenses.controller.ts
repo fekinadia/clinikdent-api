@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtGuard } from '../auth/jwt.guard';
+import { PasDeFichierEnEssaiGuard } from '../auth/pas-de-fichier-en-essai.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserType } from '../auth/current-user.decorator';
 import { ExpensesService } from './expenses.service';
@@ -94,6 +95,7 @@ export class ExpensesController {
   // Pièce jointe (facture, reçu — 2026-10-09)
   @Roles('admin', 'medecin', 'comptable')
   @Post(':id/piece-jointe')
+  @UseGuards(PasDeFichierEnEssaiGuard)
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Joindre (ou remplacer) la facture / le reçu d\'une dépense' })

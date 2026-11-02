@@ -2,6 +2,15 @@ export const TRIAL_DAYS = 14;
 
 export const DEMO_DURATION_HOURS = 24;
 
+export const ESSAI_TERMINE =
+  "Votre période d'essai est terminée. Contactez-nous pour continuer.";
+
+export function essaiTermine(
+  cabinet?: { estDemo: boolean; demoExpiresAt: Date | null } | null,
+): boolean {
+  return !!(cabinet?.estDemo && cabinet.demoExpiresAt && cabinet.demoExpiresAt < new Date());
+}
+
 export type PlanKey = 'starter' | 'pro' | 'premium';
 
 export interface PlanDefinition {

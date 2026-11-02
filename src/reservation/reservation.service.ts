@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import type { CurrentUserType } from '../auth/current-user.decorator';
+import { essaiTermine } from '../billing/plan-limits';
 import { PatientsService } from '../patients/patients.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -51,6 +52,8 @@ const CABINET_PUBLIC_SELECT = {
   reservationActive: true,
   reservationHoraires: true,
   reservationDureeCreneau: true,
+  estDemo: true,
+  demoExpiresAt: true,
 } as const;
 
 type CabinetPublic = Prisma.CabinetGetPayload<{ select: typeof CABINET_PUBLIC_SELECT }>;
@@ -336,7 +339,12 @@ export class ReservationService {
       where: { reservationSlug: slug },
       select: CABINET_PUBLIC_SELECT,
     });
-    if (!cabinet || !cabinet.reservationActive || !cabinet.reservationHoraires) {
+    if (
+      !cabinet ||
+      !cabinet.reservationActive ||
+      !cabinet.reservationHoraires ||
+      essaiTermine(cabinet)
+    ) {
       throw new NotFoundException('Page de réservation introuvable');
     }
     return cabinet;
