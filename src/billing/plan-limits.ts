@@ -22,17 +22,19 @@ export interface PlanDefinition {
   maxPraticiens: number | null;
 }
 
+// Prix choisi le 2026-11-06 : 90 DT par mois, patients illimités. Les formules
+// se distinguent par le nombre de dentistes ; pro et premium restent à fixer.
 export const PLAN_LIMITS: Record<PlanKey, PlanDefinition> = {
   starter: {
     label: 'Starter',
-    prixMillimes: 59000,
-    maxPatients: 500,
+    prixMillimes: 90000,
+    maxPatients: null,
     maxPraticiens: 1,
   },
   pro: {
     label: 'Pro',
     prixMillimes: 99000,
-    maxPatients: 2000,
+    maxPatients: null,
     maxPraticiens: 2,
   },
   premium: {
